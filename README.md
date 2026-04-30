@@ -3,6 +3,14 @@
 루트 진입용 `index.html`에서 각 연습 디렉터리의 정적 웹페이지로 이동할 수 있도록 구성한 저장소입니다.
 현재 포함된 개별 연습 페이지 중 하나는 AI 에이전트 기반의 현대적인 애플리케이션 빌드를 소개하는 `단일 페이지(SPA)` 랜딩입니다. (프레임워크 없음, 순수 `HTML/CSS/JS`)
 
+## 프로젝트 바로가기
+- Day 1 프로젝트
+  - [웹페이지 열기](./goorm-260429-d1-p1-webpage/)
+  - [README 읽기](./goorm-260429-d1-p1-webpage/README.html)
+- Day 2 프로젝트 (차트 해설 AI)
+  - [웹페이지 열기](./goorm-260430-d2-p1-webpage/)
+  - [README 읽기](./goorm-260430-d2-p1-webpage/README.html)
+
 ## 루트 랜딩 페이지
 - 루트 `index.html`은 각 연습 디렉터리의 `index.html`을 자동으로 수집해 링크 목록을 만듭니다.
 - 생성 스크립트: `scripts/generate-root-index.js`

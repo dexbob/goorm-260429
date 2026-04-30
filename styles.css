@@ -224,6 +224,12 @@ a {
   transition: transform 150ms ease, border-color 150ms ease;
 }
 
+.card-link-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 .empty-state {
   padding: 32px;
   text-align: center;
