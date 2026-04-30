@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>차트 해설 AI | 바이브코딩 입문자용</title>
+    <meta
+      name="description"
+      content="주식 차트 이미지를 업로드하면 초보자 친화적으로 차트 구조와 시장 상태를 설명해주는 AI 웹앱 MVP"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="page-shell">
+      <header class="hero">
+        <p class="eyebrow">Vibe Coding Day 2</p>
+        <h1>주식 차트 해설 AI</h1>
+        <p class="hero-copy">
+          차트 이미지를 올리면 AI가 차트 구조를 읽고, 현재 시장 흐름과 초보자 관점의 인사이트를
+          설명합니다.
+        </p>
+      </header>
+
+      <section class="card upload-card" aria-labelledby="upload-title">
+        <div class="section-head">
+          <h2 id="upload-title">1) 차트 이미지 업로드</h2>
+          <p>Drag & Drop 또는 파일 선택 버튼으로 이미지를 추가하세요.</p>
+        </div>
+
+        <div id="drop-zone" class="drop-zone" tabindex="0" role="button" aria-label="이미지 업로드 영역">
+          <p class="drop-title">여기에 차트 이미지를 드롭하세요</p>
+          <p class="drop-hint">PNG / JPG / WEBP 파일 지원</p>
+          <label class="file-button" for="image-input">파일 선택</label>
+          <input id="image-input" type="file" accept="image/png,image/jpeg,image/webp" hidden />
+        </div>
+
+        <div id="file-meta" class="file-meta" aria-live="polite">선택된 이미지가 없습니다.</div>
+        <button id="analyze-button" class="analyze-button" type="button">분석하기</button>
+      </section>
+
+      <section class="card status-card" aria-live="polite">
+        <h2>2) 분석 상태</h2>
+        <p id="status-text">이미지를 선택하면 분석을 시작할 수 있습니다.</p>
+      </section>
+
+      <section id="result-card" class="card result-card is-hidden" aria-labelledby="result-title">
+        <div class="section-head">
+          <h2 id="result-title">3) 분석 결과</h2>
+          <span id="market-badge" class="market-badge">상태 대기</span>
+        </div>
+
+        <article class="result-block">
+          <h3>차트 요약</h3>
+          <p id="summary-text"></p>
+        </article>
+
+        <article class="result-block">
+          <h3>시장 상태 해석</h3>
+          <p id="trend-text"></p>
+        </article>
+
+        <article class="result-block">
+          <h3>초보자 인사이트</h3>
+          <p id="insight-text"></p>
+        </article>
+
+        <article class="result-block">
+          <h3>감지된 요소</h3>
+          <ul id="detected-list" class="tag-list"></ul>
+        </article>
+
+        <article class="result-block">
+          <h3>주의할 점</h3>
+          <ul id="caution-list" class="caution-list"></ul>
+        </article>
+      </section>
+    </main>
+
+    <script src="./script.js"></script>
+  </body>
+</html>
