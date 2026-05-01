@@ -48,6 +48,20 @@ function buildDescription(dirname) {
   return `구름 ${cohort} 과정의 Day ${day}, Project ${project} 연습 페이지입니다.`;
 }
 
+function formatGeneratedAtKst(date = new Date()) {
+  const formatter = new Intl.DateTimeFormat("sv-SE", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false
+  });
+  return `${formatter.format(date).replace(" ", "T")}+09:00`;
+}
+
 /** Express 등 Node API가 있으면 루트 정적 허브(포트 5000)만으로는 저장 API가 동작하지 않음을 안내한다. */
 function hasExpressBackend(dirname) {
   const dir = path.join(ROOT_DIR, dirname);
@@ -158,7 +172,7 @@ function renderPage(exerciseDirectories) {
   const primaryLinkMarkup = exerciseDirectories.length
     ? `<a class="button-link primary" href="./${escapeHtml(exerciseDirectories[0])}/">첫 연습 페이지 열기</a>`
     : `<a class="button-link primary" href="#exercise-list-heading">목록 보기</a>`;
-  const generatedAt = new Date().toISOString();
+  const generatedAt = formatGeneratedAtKst();
 
   return `<!doctype html>
 <html lang="ko">
@@ -179,11 +193,7 @@ function renderPage(exerciseDirectories) {
         <h1>연습 디렉터리로 바로 이동하는 루트 랜딩</h1>
         <p>
           매일 추가되는 정적 웹페이지 연습 결과물을 한 곳에서 확인할 수 있도록 구성한 진입 페이지입니다.
-          루트 아래에 <code>index.html</code>이 있는 디렉터리를 자동으로 수집해 링크 카드로 보여줍니다.
         </p>
-        <div class="hero-actions">
-          ${primaryLinkMarkup}
-        </div>
 ${renderHeroOutlineSection(exerciseDirectories)}
       </section>
 

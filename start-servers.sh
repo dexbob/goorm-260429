@@ -40,6 +40,17 @@ if ! command -v node >/dev/null 2>&1; then
   exit 1
 fi
 
+GENERATE_ROOT_INDEX_SCRIPT="${ROOT_DIR}/scripts/generate-root-index.js"
+
+if [[ -f "${GENERATE_ROOT_INDEX_SCRIPT}" ]]; then
+  echo "[start-servers] 루트 index.html 생성 스크립트 실행 중..." >&2
+  if ! node "${GENERATE_ROOT_INDEX_SCRIPT}" >&2; then
+    echo "[start-servers] 경고: index.html 자동 생성에 실패했습니다. 기존 파일로 계속 진행합니다." >&2
+  fi
+else
+  echo "[start-servers] 안내: ${GENERATE_ROOT_INDEX_SCRIPT} 파일이 없어 index.html 자동 생성을 건너뜁니다." >&2
+fi
+
 # 127.0.0.1:port 에 연결되면 누군가 LISTEN 중으로 간주
 port_is_listening() {
   local port="$1"

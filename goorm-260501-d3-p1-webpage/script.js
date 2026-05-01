@@ -59,6 +59,9 @@ const i18n = {
     drawerCloseAria: "메뉴 닫기",
     calendarTitle: "캘린더",
     headerDateAriaOpenCal: "캘린더에서 날짜 선택",
+    headerDateAriaBackTodo: "할일 목록으로 돌아가기",
+    headerDateHintOpen: "캘린더 열기",
+    headerDateHintBack: "목록으로 돌아가기",
     calendarWeekdays: ["일", "월", "화", "수", "목", "금", "토"],
     calendarPrevAria: "이전 달",
     calendarNextAria: "다음 달",
@@ -110,6 +113,9 @@ const i18n = {
     drawerCloseAria: "Close menu",
     calendarTitle: "Calendar",
     headerDateAriaOpenCal: "Open calendar to choose a date",
+    headerDateAriaBackTodo: "Back to task list",
+    headerDateHintOpen: "Open calendar",
+    headerDateHintBack: "Back to list",
     calendarWeekdays: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
     calendarPrevAria: "Previous month",
     calendarNextAria: "Next month",
@@ -161,6 +167,9 @@ const i18n = {
     drawerCloseAria: "メニューを閉じる",
     calendarTitle: "カレンダー",
     headerDateAriaOpenCal: "カレンダーを開いて日付を選ぶ",
+    headerDateAriaBackTodo: "タスク一覧に戻る",
+    headerDateHintOpen: "カレンダーを開く",
+    headerDateHintBack: "一覧に戻る",
     calendarWeekdays: ["日", "月", "火", "水", "木", "金", "土"],
     calendarPrevAria: "前の月",
     calendarNextAria: "次の月",
@@ -212,6 +221,9 @@ const i18n = {
     drawerCloseAria: "关闭菜单",
     calendarTitle: "日历",
     headerDateAriaOpenCal: "打开日历选择日期",
+    headerDateAriaBackTodo: "返回待办列表",
+    headerDateHintOpen: "打开日历",
+    headerDateHintBack: "返回列表",
     calendarWeekdays: ["日", "一", "二", "三", "四", "五", "六"],
     calendarPrevAria: "上个月",
     calendarNextAria: "下个月",
@@ -487,6 +499,17 @@ function formatDateKeyForDisplay(dateKey) {
   }).format(new Date(y, m - 1, day));
 }
 
+function formatDateKeyForHover(dateKey) {
+  const [y, m, day] = dateKey.split("-").map(Number);
+  if (!y || !m || !day) return dateKey;
+  const localeMap = { ko: "ko-KR", en: "en-US", ja: "ja-JP", zh: "zh-CN" };
+  return new Intl.DateTimeFormat(localeMap[currentLanguage] || "ko-KR", {
+    month: "long",
+    day: "numeric",
+    weekday: "long",
+  }).format(new Date(y, m - 1, day));
+}
+
 function updateHeaderDateText() {
   const el = document.getElementById("header-date-display");
   if (!el) return;
@@ -534,22 +557,32 @@ function renderCalendar() {
     btn.appendChild(dayNum);
 
     if (stats.total > 0) {
+      btn.classList.add("has-todos");
+      const progress = Math.max(0, Math.min(1, stats.done / stats.total));
+      const progressStep = Math.min(5, Math.max(1, Math.ceil(progress * 5)));
+      btn.classList.add(`progress-${progressStep}`);
       if (stats.done === stats.total) btn.classList.add("is-all-done");
       const statsWrap = document.createElement("span");
       statsWrap.className = "calendar-day-stats";
 
       const line1 = document.createElement("span");
       line1.className = "calendar-stat-line";
-      line1.textContent = `${t("countTodoLabel")} ${stats.total}`;
+      line1.textContent = `- ${t("countTodoLabel")} ${stats.total}`;
 
       const line2 = document.createElement("span");
       line2.className = "calendar-stat-line";
-      line2.textContent = `${t("countDoneLabel")} ${stats.done}`;
+      line2.textContent = `- ${t("countDoneLabel")} ${stats.done}`;
 
       statsWrap.appendChild(line1);
       statsWrap.appendChild(line2);
       btn.appendChild(statsWrap);
     }
+
+    const hoverLines =
+      stats.total > 0
+        ? `${formatDateKeyForHover(key)}\n- ${t("countTodoLabel")} ${stats.total}\n- ${t("countDoneLabel")} ${stats.done}`
+        : formatDateKeyForHover(key);
+    btn.setAttribute("data-hover-info", hoverLines);
 
     grid.appendChild(btn);
   }
@@ -562,6 +595,7 @@ function setView(view) {
   if (!todoEl || !calEl) return;
   todoEl.hidden = currentView !== "todo";
   calEl.hidden = currentView !== "calendar";
+  updateHeaderDateButtonState();
 }
 
 async function openCalendarAroundSelection() {
@@ -610,6 +644,17 @@ function setTheme(theme) {
   syncThemeRadios();
 }
 
+function updateHeaderDateButtonState() {
+  const headerDateBtn = document.getElementById("header-date-btn");
+  if (!headerDateBtn) return;
+  const inCalendar = currentView === "calendar";
+  headerDateBtn.setAttribute(
+    "aria-label",
+    inCalendar ? t("headerDateAriaBackTodo") : t("headerDateAriaOpenCal"),
+  );
+  headerDateBtn.setAttribute("data-open-hint", inCalendar ? t("headerDateHintBack") : t("headerDateHintOpen"));
+}
+
 function setDrawerOpen(open) {
   drawerOpen = open;
   const body = document.body;
@@ -650,7 +695,7 @@ function applyLanguage(lang) {
   document.getElementById("app-title").textContent = t("appTitle");
   document.getElementById("drawer-title").textContent = t("drawerTitle");
   document.getElementById("calendar-heading").textContent = t("calendarTitle");
-  document.getElementById("header-date-btn")?.setAttribute("aria-label", t("headerDateAriaOpenCal"));
+  updateHeaderDateButtonState();
 
   refreshDrawerControlsI18n();
 
@@ -793,6 +838,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   headerDateBtn?.addEventListener("click", () => {
+    if (currentView === "calendar") {
+      setView("todo");
+      return;
+    }
     openCalendarAroundSelection().catch((e) => showApiFailure(e, "apiErrorLoad"));
   });
 
