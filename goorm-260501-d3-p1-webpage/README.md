@@ -55,3 +55,4 @@ npm start
 - 루트 연습 허브(예: 저장소 최상단에서 실행하는 Python `http.server`, 보통 포트 5000)로 이 프로젝트만 열면, 저장 시 **HTTP 501 (Not Implemented)** 이 납니다. Python 정적 서버는 `POST /api/todos`를 처리하지 않기 때문입니다. **반드시 이 폴더에서 `npm start` 후 나오는 주소**에서 사용하거나, 허브를 쓸 경우 `index.html`의 **`meta todo-api-origin`** 에 API 서버 URL(예: `http://내IP:3333`)을 지정하고 Node API 서버도 함께 띄우세요(CORS 허용됨).
 - 언어/테마 선택 UI는 `<select>`가 아니라 라디오(이모지 버튼) 형태입니다.
 - 언어 또는 테마를 변경하면 드로어(서브 메뉴)는 자동으로 닫힙니다.
+- 동일 워크스페이스의 다른 프로젝트는 루트 `README.md`에서 확인할 수 있습니다.

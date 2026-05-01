@@ -20,6 +20,11 @@ IGNORE_DIR_NAMES=(
   "scripts"
 )
 
+# 자동 탐색과 별개로 항상 정적 프로젝트 목록에 넣고 싶은 경로(루트 기준 상대경로)
+PINNED_STATIC_DIRS=(
+  "goorm-260501-d3-p2-webpage/streaky"
+)
+
 if ! command -v python3 >/dev/null 2>&1; then
   echo "python3 명령을 찾을 수 없습니다."
   exit 1
@@ -109,6 +114,50 @@ discover_node_server_projects() {
     fi
     if project_has_start_script "${d}"; then
       printf '%s\n' "${d}"
+    fi
+  done
+}
+
+discover_static_web_projects() {
+  local sorted=()
+  while IFS= read -r -d '' item; do
+    sorted+=("${item%/}")
+  done < <(
+    find "${ROOT_DIR}" -maxdepth 2 -mindepth 1 -type d -print0 2>/dev/null | LC_ALL=C sort -z
+  )
+
+  local d rel name leaf
+  for d in "${sorted[@]}"; do
+    rel="${d#${ROOT_DIR}/}"
+    name="${rel%%/*}"
+    leaf="${d##*/}"
+
+    if is_ignored_dirname "${name}" || is_ignored_dirname "${leaf}"; then
+      continue
+    fi
+
+    if [[ -f "${d}/index.html" ]]; then
+      printf '%s\n' "${d}"
+    fi
+  done
+}
+
+append_pinned_static_projects() {
+  local rel abs existing
+  for rel in "${PINNED_STATIC_DIRS[@]}"; do
+    abs="${ROOT_DIR}/${rel}"
+    [[ -f "${abs}/index.html" ]] || continue
+
+    existing=0
+    for dir in "${STATIC_WEB_DIRS[@]:-}"; do
+      if [[ "${dir}" == "${abs}" ]]; then
+        existing=1
+        break
+      fi
+    done
+
+    if (( existing == 0 )); then
+      STATIC_WEB_DIRS+=("${abs}")
     fi
   done
 }
@@ -244,6 +293,8 @@ if [[ "${STATIC_PORT}" != "${STATIC_PORT_START}" ]]; then
 fi
 
 mapfile -t APP_DIRS < <(discover_node_server_projects)
+mapfile -t STATIC_WEB_DIRS < <(discover_static_web_projects)
+append_pinned_static_projects
 
 declare -a APP_LABELS=()
 declare -a APP_PORTS=()
@@ -326,6 +377,15 @@ while ((i < ${#APP_LABELS[@]})); do
 
   i=$((i + 1))
 done | LC_ALL=C sort
+
+if (( ${#STATIC_WEB_DIRS[@]} > 0 )); then
+  echo ""
+  echo " 정적 프로젝트 경로:"
+  for dir in "${STATIC_WEB_DIRS[@]}"; do
+    rel="${dir#${ROOT_DIR}/}"
+    printf ' %-14s http://localhost:%s/%s/\n' "${rel##*/}" "${STATIC_PORT}" "${rel}"
+  done | LC_ALL=C sort
+fi
 
 echo "---"
 echo "[안내] 위 Node 앱 목록 종료 포함 전체 종료 → 이 창에서 Ctrl+C"

@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>습관제조기</title>
+    <meta name="description" content="횟수 기반 습관 추적 웹앱" />
+    <meta name="color-scheme" content="dark" />
+    <link rel="stylesheet" href="./css/style.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="app-header">
+        <div class="title-row">
+          <h1>습관제조기</h1>
+          <span class="header-subtitle">습관을 만들어 보아요.</span>
+        </div>
+      </header>
+
+      <section class="panel">
+        <form id="habit-form" class="habit-form">
+          <label class="name-field">
+            <input id="habit-name" name="name" type="text" maxlength="30" placeholder="습관 이름" required aria-label="습관 이름" title="추적할 습관 이름을 입력하세요." />
+          </label>
+          <label class="icon-field">
+            <input id="habit-icon" name="icon" type="hidden" value="✅" />
+            <button id="icon-trigger" type="button" class="icon-trigger" aria-label="아이콘 선택" title="클릭해서 습관 아이콘을 선택하세요.">
+              <span id="icon-preview">✅</span>
+            </button>
+            <div id="icon-popover" class="icon-popover hidden" role="dialog" aria-label="아이콘 선택 팝업">
+              <button type="button" class="icon-choice" data-icon="✅">✅</button>
+              <button type="button" class="icon-choice" data-icon="🔥">🔥</button>
+              <button type="button" class="icon-choice" data-icon="💧">💧</button>
+              <button type="button" class="icon-choice" data-icon="🏃">🏃</button>
+              <button type="button" class="icon-choice" data-icon="🏋️">🏋️</button>
+              <button type="button" class="icon-choice" data-icon="🧘">🧘</button>
+              <button type="button" class="icon-choice" data-icon="📚">📚</button>
+              <button type="button" class="icon-choice" data-icon="✍️">✍️</button>
+              <button type="button" class="icon-choice" data-icon="💻">💻</button>
+              <button type="button" class="icon-choice" data-icon="🛌">🛌</button>
+              <button type="button" class="icon-choice" data-icon="🍎">🍎</button>
+              <button type="button" class="icon-choice" data-icon="🥗">🥗</button>
+              <button type="button" class="icon-choice" data-icon="🚭">🚭</button>
+              <button type="button" class="icon-choice" data-icon="🚰">🚰</button>
+              <button type="button" class="icon-choice" data-icon="🎯">🎯</button>
+              <button type="button" class="icon-choice" data-icon="🧠">🧠</button>
+              <button type="button" class="icon-choice" data-icon="🌙">🌙</button>
+              <button type="button" class="icon-choice" data-icon="🧹">🧹</button>
+              <button type="button" class="icon-choice" data-icon="💊">💊</button>
+              <button type="button" class="icon-choice" data-icon="🎸">🎸</button>
+            </div>
+          </label>
+          <div class="target-color-group">
+            <label class="target-field">
+              <div class="target-slider-wrap" title="슬라이드로 하루 목표 횟수를 선택하세요.">
+                <input
+                  id="habit-target"
+                  name="targetCount"
+                  type="range"
+                  min="1"
+                  max="10"
+                  step="1"
+                  value="5"
+                  aria-label="하루 목표 횟수 슬라이더"
+                />
+                <span id="target-display" class="target-display">5회</span>
+              </div>
+            </label>
+            <label class="color-field">
+            <div class="color-picker-wrap">
+              <input id="habit-color" name="color" type="color" value="#22c55e" />
+              <button id="color-trigger" type="button" class="color-trigger" aria-label="색상 선택" title="습관 색상을 선택하세요.">
+                <span class="color-icon">🎨</span>
+              </button>
+            </div>
+            </label>
+          </div>
+          <button id="add-habit-btn" type="submit" title="입력한 정보로 습관을 추가합니다.">습관추가</button>
+        </form>
+      </section>
+
+      <section class="panel list-panel">
+        <div id="habit-list" class="habit-list"></div>
+      </section>
+    </main>
+
+    <template id="habit-card-template">
+      <article class="habit-card">
+        <header class="habit-head">
+          <div class="habit-head-left">
+            <button data-remove-trigger type="button" class="habit-icon-btn" title="클릭하면 삭제할 수 있습니다.">
+              <span data-icon></span>
+            </button>
+            <h3 data-name></h3>
+          </div>
+          <div class="year-nav" title="연도를 이동해 히트맵을 확인하세요.">
+            <button data-year-prev type="button" class="year-nav-btn" aria-label="이전 연도">◀</button>
+            <span data-year-label class="year-label"></span>
+            <button data-year-next type="button" class="year-nav-btn" aria-label="다음 연도">▶</button>
+          </div>
+          <button data-increment type="button" class="inc-btn" title="오늘 횟수를 1 증가시킵니다.">
+            <span data-battery class="water-tank">
+              <span data-water class="water-fill"></span>
+              <span class="charge-wave"></span>
+              <span data-water-label class="water-label"></span>
+            </span>
+            <span class="battery-cap" aria-hidden="true"></span>
+          </button>
+        </header>
+        <div data-heatmap class="heatmap"></div>
+      </article>
+    </template>
+
+    <div id="confirm-modal" class="confirm-modal hidden" role="dialog" aria-modal="true" aria-label="확인 팝업">
+      <div class="confirm-card">
+        <p id="confirm-message"></p>
+        <div class="confirm-actions">
+          <button id="confirm-ok" type="button">확인</button>
+          <button id="confirm-cancel" type="button">취소</button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="./js/app.js"></script>
+  </body>
+</html>
