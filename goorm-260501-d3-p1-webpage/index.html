@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- 루트 허브(예: 포트 5000)에서 이 파일만 여는데 API는 다른 포트(3333)에서 띄울 때: content 에 API 호스트까지 적기 -->
+    <!-- <meta name="todo-api-origin" content="http://100.69.68.91:3333" /> -->
+    <title>오늘의 할일</title>
+    <link rel="stylesheet" href="./style.css" />
+    <script defer src="./script.js"></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <div
+        id="drawer-backdrop"
+        class="drawer-backdrop"
+        hidden
+        tabindex="-1"
+        aria-hidden="true"
+      ></div>
+
+      <aside
+        id="options-drawer"
+        class="options-drawer"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="drawer-title"
+        hidden
+      >
+        <div class="drawer-header">
+          <h2 id="drawer-title" class="drawer-title">옵션</h2>
+          <button id="drawer-close" class="drawer-close-btn" type="button" aria-label="닫기">
+            ×
+          </button>
+        </div>
+        <div class="drawer-body drawer-body-scroll">
+          <fieldset class="drawer-choice-field">
+            <legend id="language-label" class="drawer-choice-legend">언어</legend>
+            <div class="drawer-choice-row drawer-lang-row">
+              <label class="drawer-pill-choice" data-lang-opt="ko">
+                <input class="drawer-choice-input" type="radio" name="app-language" value="ko" checked />
+                <span class="drawer-pill-face drawer-pill-emoji" aria-hidden="true">🇰🇷</span>
+              </label>
+              <label class="drawer-pill-choice" data-lang-opt="en">
+                <input class="drawer-choice-input" type="radio" name="app-language" value="en" />
+                <span class="drawer-pill-face drawer-pill-emoji" aria-hidden="true">🇺🇸</span>
+              </label>
+              <label class="drawer-pill-choice" data-lang-opt="ja">
+                <input class="drawer-choice-input" type="radio" name="app-language" value="ja" />
+                <span class="drawer-pill-face drawer-pill-emoji" aria-hidden="true">🇯🇵</span>
+              </label>
+              <label class="drawer-pill-choice" data-lang-opt="zh">
+                <input class="drawer-choice-input" type="radio" name="app-language" value="zh" />
+                <span class="drawer-pill-face drawer-pill-emoji" aria-hidden="true">🇨🇳</span>
+              </label>
+            </div>
+          </fieldset>
+
+          <fieldset class="drawer-choice-field">
+            <legend id="theme-label" class="drawer-choice-legend">테마</legend>
+            <div class="drawer-choice-row drawer-theme-row" role="presentation">
+              <label class="drawer-theme-seg" data-theme-opt="light">
+                <input class="drawer-choice-input" type="radio" name="app-theme" value="light" checked />
+                <span class="drawer-theme-face" aria-hidden="true">☀️</span>
+              </label>
+              <label class="drawer-theme-seg" data-theme-opt="dark">
+                <input class="drawer-choice-input" type="radio" name="app-theme" value="dark" />
+                <span class="drawer-theme-face" aria-hidden="true">🌙</span>
+              </label>
+            </div>
+          </fieldset>
+        </div>
+
+        <footer class="drawer-footer">
+          <div class="drawer-footer-stack">
+            <button id="stack-open-btn" class="drawer-stack-pill-btn" type="button">
+              <span class="drawer-stack-emoji" aria-hidden="true">🧱</span>
+              <span id="stack-open-label" class="drawer-stack-label">기술 스택</span>
+            </button>
+          </div>
+          <p id="dev-footer-l1" class="drawer-footer-line"></p>
+          <p id="dev-footer-l2" class="drawer-footer-line"></p>
+          <p id="dev-footer-l3" class="drawer-footer-line drawer-footer-links"></p>
+          <p id="dev-footer-l4" class="drawer-footer-line drawer-footer-links"></p>
+        </footer>
+      </aside>
+
+      <dialog id="stack-dialog" class="stack-dialog" aria-labelledby="stack-dialog-title">
+        <div class="stack-dialog-panel">
+          <div class="stack-dialog-header">
+            <h3 id="stack-dialog-title" class="stack-dialog-title">기술 스택</h3>
+            <button id="stack-dialog-close" type="button" class="stack-dialog-close" aria-label="닫기">
+              ×
+            </button>
+          </div>
+          <ul id="stack-dialog-list" class="stack-dialog-list"></ul>
+        </div>
+      </dialog>
+
+      <main class="app-card" aria-labelledby="app-title">
+        <header class="app-header">
+          <div class="title-bar">
+            <div class="title-bar-cell title-bar-start">
+              <button
+                id="menu-toggle"
+                class="menu-toggle-btn"
+                type="button"
+                aria-expanded="false"
+                aria-controls="options-drawer"
+              >
+                <span class="menu-toggle-bars" aria-hidden="true"></span>
+              </button>
+            </div>
+            <div class="title-bar-cell title-bar-center">
+              <h1 id="app-title" class="app-title">오늘의 할일</h1>
+            </div>
+            <div class="title-bar-cell title-bar-end">
+              <button
+                id="header-date-btn"
+                type="button"
+                class="header-date-btn"
+                aria-live="polite"
+                aria-label="캘린더에서 날짜 선택"
+              >
+                <span id="header-date-display" class="header-date-display">2026년 5월 1일 금요일</span>
+              </button>
+            </div>
+          </div>
+        </header>
+
+        <section id="todo-view">
+          <section class="input-section" aria-label="Add a new task">
+            <div class="input-row">
+              <input
+                id="todo-input"
+                type="text"
+                autocomplete="off"
+                placeholder="What needs to be done?"
+                aria-label="Task description"
+              />
+              <button id="add-button" type="button">Add</button>
+            </div>
+          </section>
+
+          <section class="filter-section" aria-label="Filter tasks">
+            <div id="filter-row" class="filter-row" role="group" aria-label="Show tasks by status">
+              <button id="filter-all" type="button" class="filter-btn" aria-pressed="true">All</button>
+              <button id="filter-active" type="button" class="filter-btn" aria-pressed="false">
+                Active
+              </button>
+              <button id="filter-completed" type="button" class="filter-btn" aria-pressed="false">
+                Completed
+              </button>
+            </div>
+          </section>
+
+          <section class="list-section" aria-label="Your tasks">
+            <ul id="todo-list" class="todo-list"></ul>
+            <p id="empty-message" class="empty-message" hidden>No tasks yet. Add one above.</p>
+          </section>
+        </section>
+
+        <section id="calendar-view" class="calendar-view" hidden aria-labelledby="calendar-heading">
+          <header class="calendar-header">
+            <h2 id="calendar-heading" class="calendar-heading">캘린더</h2>
+            <div class="calendar-month-controls">
+              <button id="calendar-prev" class="calendar-nav-btn" type="button" aria-label="이전 달">
+                ←
+              </button>
+              <p id="calendar-month-label" class="calendar-month-label">2026년 5월</p>
+              <button id="calendar-next" class="calendar-nav-btn" type="button" aria-label="다음 달">
+                →
+              </button>
+            </div>
+          </header>
+          <div id="calendar-grid" class="calendar-grid" role="grid" aria-label="월간 캘린더"></div>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

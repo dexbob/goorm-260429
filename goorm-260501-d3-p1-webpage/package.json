@@ -1,0 +1,16 @@
+{
+  "name": "goorm-260501-d3-p1-webpage",
+  "private": true,
+  "version": "1.0.0",
+  "description": "오늘의 할일 — SQLite 백엔드 + 정적 프론트",
+  "main": "server.js",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}

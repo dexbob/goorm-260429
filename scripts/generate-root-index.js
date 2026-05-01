@@ -48,6 +48,20 @@ function buildDescription(dirname) {
   return `구름 ${cohort} 과정의 Day ${day}, Project ${project} 연습 페이지입니다.`;
 }
 
+/** Express 등 Node API가 있으면 루트 정적 허브(포트 5000)만으로는 저장 API가 동작하지 않음을 안내한다. */
+function hasExpressBackend(dirname) {
+  const dir = path.join(ROOT_DIR, dirname);
+  if (!fs.existsSync(path.join(dir, "server.js"))) return false;
+  const pkgPath = path.join(dir, "package.json");
+  if (!fs.existsSync(pkgPath)) return false;
+  try {
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+    return !!(pkg.scripts && typeof pkg.scripts.start === "string");
+  } catch {
+    return false;
+  }
+}
+
 function getExerciseDirectories() {
   return fs
     .readdirSync(ROOT_DIR, { withFileTypes: true })
@@ -63,19 +77,71 @@ function renderExerciseCard(dirname) {
   const title = formatExerciseTitle(dirname);
   const description = buildDescription(dirname);
   const href = `./${dirname}/`;
+  const readmeHtmlPath = path.join(ROOT_DIR, dirname, "README.html");
+  const hasReadmeViewer = fs.existsSync(readmeHtmlPath);
+  const readmeHref = `./${dirname}/README.html`;
+  const needsNode = hasExpressBackend(dirname);
+
+  const secondBadge = needsNode
+    ? `<span class="badge warn">Node API · npm start</span>`
+    : `<span class="badge">Static HTML</span>`;
+
+  const apiNoteMarkup = "";
+
+  const linksMarkup = hasReadmeViewer
+    ? `        <div class="card-link-row">
+          <a class="card-link" href="${escapeHtml(href)}">페이지 열기</a>
+          <a class="card-link" href="${escapeHtml(readmeHref)}">개요 보기</a>
+        </div>`
+    : `        <a class="card-link" href="${escapeHtml(href)}">페이지 열기</a>`;
 
   return `        <article class="exercise-card">
           <header>
             <div class="badge-row">
               <span class="badge success">Ready</span>
-              <span class="badge">Static HTML</span>
+              ${secondBadge}
             </div>
             <h3>${escapeHtml(title)}</h3>
           </header>
           <p>${escapeHtml(description)}</p>
+${apiNoteMarkup}
           <p class="path-label">${escapeHtml(dirname)}/index.html</p>
-          <a class="card-link" href="${escapeHtml(href)}">페이지 열기</a>
+${linksMarkup}
         </article>`;
+}
+
+function renderHeroOutlineSection(exerciseDirectories) {
+  const items = [];
+
+  items.push(`            <li>
+              <a href="./README.html">
+                <span class="hero-outline-entry-title">저장소 전체</span>
+                <span class="hero-outline-entry-sub">루트 README</span>
+              </a>
+            </li>`);
+
+  for (const dirname of exerciseDirectories) {
+    const readmeHtmlPath = path.join(ROOT_DIR, dirname, "README.html");
+    if (!fs.existsSync(readmeHtmlPath)) continue;
+    const readmeHref = `./${dirname}/README.html`;
+    const fullTitle = formatExerciseTitle(dirname);
+    items.push(`            <li>
+              <a href="${escapeHtml(readmeHref)}">
+                <span class="hero-outline-entry-title">${escapeHtml(dirname)}</span>
+                <span class="hero-outline-entry-sub">${escapeHtml(fullTitle)}</span>
+              </a>
+            </li>`);
+  }
+
+  return `        <div class="hero-outline">
+          <p id="hero-outline-heading" class="hero-outline-heading">개요 페이지</p>
+          <details class="hero-outline-dropdown" aria-labelledby="hero-outline-heading">
+            <summary class="hero-outline-summary">목록에서 선택해 열기</summary>
+            <ul class="hero-outline-list" role="list">
+${items.join("\n")}
+            </ul>
+          </details>
+        </div>`;
 }
 
 function renderEmptyState() {
@@ -117,8 +183,8 @@ function renderPage(exerciseDirectories) {
         </p>
         <div class="hero-actions">
           ${primaryLinkMarkup}
-          <a class="button-link" href="./README.html">README 보기</a>
         </div>
+${renderHeroOutlineSection(exerciseDirectories)}
       </section>
 
       <section class="meta-strip" aria-label="요약 정보">

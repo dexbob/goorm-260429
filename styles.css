@@ -72,6 +72,109 @@ a {
   gap: 12px;
 }
 
+.hero-outline {
+  margin-top: 8px;
+  display: grid;
+  gap: 10px;
+  max-width: 520px;
+}
+
+.hero-outline-heading {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+
+.hero-outline-dropdown {
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  overflow: hidden;
+}
+
+.hero-outline-summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  min-height: 48px;
+  font-weight: 600;
+  font-size: 0.96rem;
+  color: var(--text);
+  user-select: none;
+  transition: background-color 150ms ease;
+}
+
+.hero-outline-summary::-webkit-details-marker {
+  display: none;
+}
+
+.hero-outline-summary::after {
+  content: "";
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(45deg) translateY(-3px);
+  transition: transform 150ms ease;
+}
+
+.hero-outline-dropdown[open] > .hero-outline-summary::after {
+  transform: rotate(225deg) translateY(2px);
+}
+
+.hero-outline-summary:hover,
+.hero-outline-summary:focus-visible {
+  background: rgba(255, 255, 255, 0.06);
+  outline: none;
+}
+
+.hero-outline-dropdown[open] > .hero-outline-summary {
+  border-bottom: 1px solid var(--border);
+}
+
+.hero-outline-list {
+  list-style: none;
+  margin: 0;
+  padding: 6px 0;
+  max-height: min(50vh, 360px);
+  overflow-y: auto;
+}
+
+.hero-outline-list a {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 16px;
+  color: inherit;
+  text-decoration: none;
+  transition: background-color 130ms ease;
+}
+
+.hero-outline-list a:hover,
+.hero-outline-list a:focus-visible {
+  background: rgba(124, 156, 255, 0.12);
+  outline: none;
+}
+
+.hero-outline-entry-title {
+  font-weight: 600;
+  font-size: 0.9rem;
+  word-break: break-all;
+}
+
+.hero-outline-entry-sub {
+  font-size: 0.78rem;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
 .button-link {
   display: inline-flex;
   align-items: center;
@@ -195,6 +298,28 @@ a {
 .badge.success {
   background: rgba(126, 224, 129, 0.14);
   color: #b4f0b6;
+}
+
+.badge.warn {
+  background: rgba(255, 196, 90, 0.16);
+  color: #ffd79a;
+}
+
+.card-api-note {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 214, 150, 0.35);
+  background: rgba(255, 196, 90, 0.08);
+  font-size: 0.93rem;
+  line-height: 1.62;
+}
+
+.card-api-note code {
+  font-size: 0.84em;
+  padding: 0.06em 0.28em;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.2);
 }
 
 .exercise-card p {

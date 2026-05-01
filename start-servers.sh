@@ -1,26 +1,24 @@
 #!/usr/bin/env bash
+# 루트 정적 허브 + "server.js + npm start 가 있는" 하위 프로젝트를 자동 기동합니다.
+# 새 Node 서버 프로젝트를 추가하면 이 파일을 수정할 필요 없이, 아래 디스커버리 규칙에 맞으면 함께 뜹니다.
+# 종료: 이 터미널에서 Ctrl+C (정적 서버 및 기동한 npm 프로세스 정리).
+
 set -euo pipefail
 
 echo "[start-servers] 스크립트 시작 (잠시만 기다리세요…)" >&2
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-WEBPAGE_DIR="${ROOT_DIR}/goorm-260430-d2-p1-webpage"
-WEBPAGE_ENV="${WEBPAGE_DIR}/.env"
-
-# --- 포트: 환경변수 PORT가 없으면 webpage .env의 PORT, 없으면 3000
-if [[ -z "${PORT:-}" ]] && [[ -f "$WEBPAGE_ENV" ]]; then
-  _port_line="$(grep -E '^[[:space:]]*PORT=' "$WEBPAGE_ENV" 2>/dev/null | tail -n1 || true)"
-  if [[ -n "${_port_line}" ]]; then
-    PORT="${_port_line#*=}"
-    PORT="${PORT//$'\r'/}"
-    PORT="${PORT//\"/}"
-    PORT="${PORT//\'/}"
-  fi
-fi
-APP_PORT="${PORT:-3000}"
-export PORT="$APP_PORT"
-
 STATIC_PORT_START="${STATIC_PORT:-5000}"
+# 각 Node 앱 포트 후보 시작값 (비어 있는 포트를 순서대로 찾음)
+NODE_PORT_SCAN_START="${NODE_PORT_SCAN_START:-3020}"
+
+# 탐색에서 제외 (generate-root-index.js 와 비슷한 기준)
+IGNORE_DIR_NAMES=(
+  ".git"
+  ".cursor"
+  "node_modules"
+  "scripts"
+)
 
 if ! command -v python3 >/dev/null 2>&1; then
   echo "python3 명령을 찾을 수 없습니다."
@@ -32,7 +30,12 @@ if ! command -v npm >/dev/null 2>&1; then
   exit 1
 fi
 
-# 127.0.0.1:port 에 연결되면 누군가 LISTEN 중으로 간주 (짧은 timeout으로 드물게 걸리는 /dev/tcp 대기 방지)
+if ! command -v node >/dev/null 2>&1; then
+  echo "node 명령을 찾을 수 없습니다."
+  exit 1
+fi
+
+# 127.0.0.1:port 에 연결되면 누군가 LISTEN 중으로 간주
 port_is_listening() {
   local port="$1"
   if command -v timeout >/dev/null 2>&1; then
@@ -56,30 +59,212 @@ pick_free_static_port() {
   return 1
 }
 
-if port_is_listening "${APP_PORT}"; then
-  echo "[서버] 분석 API 포트 ${APP_PORT}이(가) 이미 사용 중입니다."
-  echo "       다른 터미널의 node/npm을 종료하거나, ${WEBPAGE_ENV} 에서 PORT를 바꾼 뒤 다시 실행하세요. (예: PORT=3001)"
-  exit 1
-fi
+is_ignored_dirname() {
+  local name="$1"
+  [[ "$name" == .* ]] && return 0
+  local ign
+  for ign in "${IGNORE_DIR_NAMES[@]}"; do
+    [[ "$name" == "$ign" ]] && return 0
+  done
+  return 1
+}
+
+# package.json 에 scripts.start (문자열) 있는지 확인
+project_has_start_script() {
+  local dir="$1"
+  node "${ROOT_DIR}/scripts/check-package-start.cjs" "$dir"
+}
+
+preferred_port_from_env() {
+  local dir="$1"
+  local envf="${dir}/.env"
+  [[ -f "$envf" ]] || return 1
+  local _line _val
+  _line="$(grep -E '^[[:space:]]*PORT=' "${envf}" 2>/dev/null | tail -n1 || true)"
+  [[ -z "${_line}" ]] && return 1
+  _val="${_line#*=}"
+  _val="${_val//$'\r'/}"
+  _val="${_val//\"/}"
+  _val="${_val//\'/}"
+  [[ "${_val}" =~ ^[0-9]+$ ]] || return 1
+  echo "${_val}"
+}
+
+# 출력: 줄 단위 디렉터리 절대경로 (server.js · package.json · start 스크립트 존재)
+discover_node_server_projects() {
+  local sorted=()
+  while IFS= read -r -d '' item; do
+    sorted+=("${item%/}")
+  done < <(
+    find "${ROOT_DIR}" -maxdepth 1 -mindepth 1 -type d -print0 2>/dev/null | LC_ALL=C sort -z
+  )
+  local d name
+  for d in "${sorted[@]}"; do
+    name="${d##*/}"
+    if is_ignored_dirname "${name}"; then
+      continue
+    fi
+    if [[ ! -f "${d}/server.js" ]] || [[ ! -f "${d}/package.json" ]]; then
+      continue
+    fi
+    if project_has_start_script "${d}"; then
+      printf '%s\n' "${d}"
+    fi
+  done
+}
+
+NEXT_APP_PORT="${NODE_PORT_SCAN_START}"
+
+declare -A PORT_RESERVED_IN_THIS_RUN=()
+
+reserve_app_port_runtime() {
+
+  PORT_RESERVED_IN_THIS_RUN["$1"]=1
+
+}
+
+port_blocked_for_hub() {
+
+  local p="$1"
+
+  port_is_listening "${p}" && return 0
+
+  [[ -n "${PORT_RESERVED_IN_THIS_RUN[$p]:-}" ]] && return 0
+
+  return 1
+
+}
+
+# 비어 있는 tcp 포트 하나 (순차 스캔). 다른 앱 기동 중 listen 전이어도 이번 실행에서 예약된 포트는 건너뜀.
+allocate_free_app_port_scan() {
+
+  local max=$((NEXT_APP_PORT + 400))
+
+  while (( NEXT_APP_PORT <= max )); do
+
+    local try="${NEXT_APP_PORT}"
+
+    NEXT_APP_PORT=$((NEXT_APP_PORT + 1))
+
+    if ! port_blocked_for_hub "${try}"; then
+
+      echo "${try}"
+
+      return 0
+
+    fi
+
+
+
+  done
+
+  return 1
+
+}
+
+choose_app_port_for_dir() {
+
+  local dir="$1"
+
+  local label="${dir##*/}"
+
+  local pref
+
+  if pref="$(preferred_port_from_env "${dir}" 2>/dev/null)" && [[ -n "${pref}" ]]; then
+
+    if ! port_blocked_for_hub "${pref}"; then
+
+      echo "${pref}"
+
+      return 0
+
+
+
+    fi
+
+    echo "[서버] ${label}: ${dir}/.env 의 PORT=${pref} 이미 예약 또는 사용 중 → 자동 포트로 대체합니다." >&2
+
+
+
+  fi
+
+  allocate_free_app_port_scan
+
+}
+
+STATIC_PID=""
+declare -a NODE_PIDS=()
+
+HUB_DEV_PORTS_FILE="${ROOT_DIR}/hub-dev-ports.json"
+
+cleanup() {
+  local pid
+  for pid in "${NODE_PIDS[@]:-}"; do
+    if [[ -n "${pid}" ]] && kill -0 "${pid}" >/dev/null 2>&1; then
+      kill "${pid}" >/dev/null 2>&1 || true
+    fi
+  done
+
+  NODE_PIDS=()
+
+  if [[ -n "${STATIC_PID:-}" ]] && kill -0 "${STATIC_PID}" >/dev/null 2>&1; then
+    kill "${STATIC_PID}" >/dev/null 2>&1 || true
+
+  fi
+
+  rm -f "${HUB_DEV_PORTS_FILE}" "${HUB_DEV_PORTS_FILE}.tmp" 2>/dev/null || true
+}
+
+write_hub_dev_ports_json() {
+  [[ ${#APP_LABELS[@]} -eq 0 ]] && return 0
+  local tmp="${HUB_DEV_PORTS_FILE}.tmp"
+  local i c=0
+  printf '{' >"${tmp}"
+  for ((i = 0; i < ${#APP_LABELS[@]}; i++)); do
+    ((c++)) && printf ',' >>"${tmp}"
+    printf '"%s":%s' "${APP_LABELS[i]}" "${APP_PORTS[i]}" >>"${tmp}"
+  done
+  printf '}' >>"${tmp}"
+  mv -f "${tmp}" "${HUB_DEV_PORTS_FILE}"
+  echo "[start-servers] 허브용 ${HUB_DEV_PORTS_FILE##*/} 작성 → http://<호스트>:${STATIC_PORT}/<프로젝트폴더>/ 에서 Node API 포트 자동 연결" >&2
+}
+
+trap cleanup EXIT INT TERM HUP
 
 STATIC_PORT="$(pick_free_static_port)" || STATIC_PORT=""
 if [[ -z "${STATIC_PORT}" ]]; then
   echo "[서버] ${STATIC_PORT_START}~(+) 구간에서 비어 있는 정적 서버 포트를 찾지 못했습니다."
+
   exit 1
 fi
+
 if [[ "${STATIC_PORT}" != "${STATIC_PORT_START}" ]]; then
   echo "[서버] 정적 포트 ${STATIC_PORT_START} 사용 중 → ${STATIC_PORT} 로 시작합니다." >&2
+
 fi
 
-cleanup() {
-  if [[ -n "${STATIC_PID:-}" ]] && kill -0 "${STATIC_PID}" >/dev/null 2>&1; then
-    kill "${STATIC_PID}" >/dev/null 2>&1 || true
-  fi
-}
+mapfile -t APP_DIRS < <(discover_node_server_projects)
 
-trap cleanup EXIT INT TERM
+declare -a APP_LABELS=()
+declare -a APP_PORTS=()
 
-echo "[1/2] 정적 서버 시작: http://localhost:${STATIC_PORT}" >&2
+if (( ${#APP_DIRS[@]} > 0 )); then
+  echo "[0] Node 앱 ${#APP_DIRS[@]}개 포트 할당 (${NODE_PORT_SCAN_START}대 또는 각 .env 의 PORT):" >&2
+  for dir in "${APP_DIRS[@]}"; do
+    label="${dir##*/}"
+    if ! chosen_port="$(choose_app_port_for_dir "${dir}")"; then
+      echo "[서버] ${label}: 빈 포트를 찾지 못했습니다. NODE_PORT_SCAN_START 를 올려 보세요."
+      exit 1
+    fi
+    reserve_app_port_runtime "${chosen_port}"
+    APP_LABELS+=("${label}")
+    APP_PORTS+=("${chosen_port}")
+    echo "    • ${label}  →  포트 ${chosen_port}" >&2
+  done
+  write_hub_dev_ports_json
+fi
+
+echo "[1] 정적 허브: http://localhost:${STATIC_PORT}  (${ROOT_DIR})" >&2
 python3 -m http.server "${STATIC_PORT}" --directory "${ROOT_DIR}" &
 STATIC_PID=$!
 
@@ -91,6 +276,7 @@ for _ in {1..50}; do
   if port_is_listening "${STATIC_PORT}"; then
     break
   fi
+
   sleep 0.1
 done
 
@@ -99,7 +285,50 @@ if ! port_is_listening "${STATIC_PORT}"; then
   exit 1
 fi
 
-echo "[2/2] 분석 서버 시작: http://localhost:${APP_PORT}" >&2
-echo "[안내] Node 서버가 이 터미널을 점유합니다. 아래에 'running' 메시지가 보인 뒤에는 입력이 없어 멈춘 것처럼 보여도 정상입니다. 종료: Ctrl+C" >&2
-cd "${WEBPAGE_DIR}"
-npm start
+if (( ${#APP_DIRS[@]} == 0 )); then
+  echo "[안내] server.js + npm start 가 있는 하위 디렉터리가 없습니다. 정적 허브만 실행 중입니다." >&2
+
+  echo "[종료] Ctrl+C" >&2
+
+  wait "${STATIC_PID}" || true
+
+  exit 0
+fi
+
+echo "[2] Node 서버 ${#APP_DIRS[@]}개 기동:" >&2
+
+for ((i = 0; i < ${#APP_DIRS[@]}; i++)); do
+  dir="${APP_DIRS[i]}"
+  label="${dir##*/}"
+  chosen_port="${APP_PORTS[i]}"
+
+  echo "    • ${label}  →  http://localhost:${chosen_port}" >&2
+
+  (
+    cd "${dir}"
+
+    exec env PORT="${chosen_port}" npm start
+  ) &
+
+  NODE_PIDS+=($!)
+  sleep 0.15
+
+done
+
+echo "" >&2
+echo "--- 열 주소 요약 ---"
+echo " 정적 허브     http://localhost:${STATIC_PORT}"
+echo " (같은 호스트로 접속 시) 아래 경로에서 연 Node 앱은 hub-dev-ports.json 으로 API 포트가 자동 연결됩니다."
+i=0
+while ((i < ${#APP_LABELS[@]})); do
+
+  printf ' %-14s http://localhost:%s\n' "${APP_LABELS[i]}" "${APP_PORTS[i]}"
+
+  i=$((i + 1))
+done | LC_ALL=C sort
+
+echo "---"
+echo "[안내] 위 Node 앱 목록 종료 포함 전체 종료 → 이 창에서 Ctrl+C"
+echo ""
+
+wait || true

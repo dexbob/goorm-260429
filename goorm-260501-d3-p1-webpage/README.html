@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Day 3 P1 README Viewer</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: "Pretendard", "Noto Sans KR", system-ui, sans-serif;
+      }
+      body {
+        margin: 0;
+        background: #0b1020;
+        color: #f4f7ff;
+      }
+      main {
+        width: min(960px, calc(100% - 32px));
+        margin: 32px auto;
+      }
+      a {
+        color: #a9bcff;
+      }
+      .markdown-body {
+        line-height: 1.65;
+        font-size: 0.96rem;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 14px;
+        padding: 18px;
+        background: rgba(255, 255, 255, 0.04);
+      }
+      .markdown-body code {
+        font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      }
+      .markdown-body pre {
+        overflow-x: auto;
+        padding: 12px;
+        border-radius: 10px;
+        background: rgba(0, 0, 0, 0.28);
+      }
+      .markdown-body img {
+        max-width: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p><a href="../index.html">루트 랜딩으로 돌아가기</a> | <a href="./index.html">프로젝트 페이지로 이동</a></p>
+      <article id="readme-content" class="markdown-body">README.md를 불러오는 중...</article>
+    </main>
+    <script>
+      async function loadReadme() {
+        const target = document.getElementById("readme-content");
+        try {
+          const response = await fetch("./README.md", { cache: "no-store" });
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const markdown = await response.text();
+          target.innerHTML = marked.parse(markdown);
+        } catch (error) {
+          target.textContent = `README.md를 불러오지 못했습니다: ${error.message}`;
+        }
+      }
+      loadReadme();
+    </script>
+  </body>
+</html>

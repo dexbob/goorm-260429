@@ -22,6 +22,10 @@ dist/
 build/
 out/
 
+# start-servers.sh 가 런타임에 생성 (저장소 루트)
+hub-dev-ports.json
+hub-dev-ports.json.tmp
+
 # Log Files
 npm-debug.log*
 yarn-debug.log*
