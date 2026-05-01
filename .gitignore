@@ -1,1 +1,30 @@
+# Dependency (이미 추가하신 내용)
+node_modules/
+
+# Environment Variables (이미 추가하신 내용)
+**/.env
+.env.local
+.env.*.local
+
+# Editor/IDE Config (Cursor 외 추가)
 .cursor/**/
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS Metadata
+.DS_Store
+Thumbs.db
+
+# Build Output (빌드 결과물이 생길 경우 대비)
+dist/
+build/
+out/
+
+# Log Files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+logs/
+*.log

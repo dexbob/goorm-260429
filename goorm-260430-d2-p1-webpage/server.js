@@ -2,6 +2,7 @@ const path = require("path");
 const express = require("express");
 const cors = require("cors");
 const multer = require("multer");
+require("dotenv").config();
 
 const app = express();
 const upload = multer({
@@ -10,77 +11,243 @@ const upload = multer({
   },
 });
 const PORT = process.env.PORT || 3000;
+const ROOT_DIR = path.join(__dirname, "..");
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const DEFAULT_GEMINI_MODELS = ["gemini-2.0-flash", "gemini-2.5-flash"];
+const MODEL_NAME = process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODELS[0];
+const GEMINI_MIN_INTERVAL_MS = Number(process.env.GEMINI_MIN_INTERVAL_MS || 6000);
+const GEMINI_429_COOLDOWN_MS = Number(process.env.GEMINI_429_COOLDOWN_MS || 20000);
+let nextGeminiRequestAt = 0;
 
 const ANALYSIS_PROMPT_TEMPLATE = `너는 주식 초보자를 위한 차트 해설 전문가다.
-다음 이미지를 보고 아래 항목을 JSON으로 정리해라.
-1) 차트 기본 정보(종목, 시간 프레임, 지표)
-2) 현재 추세(상승/하락/횡보)
-3) 추세 판단 근거
-4) 초보자도 이해할 쉬운 설명
-5) 투자 관점의 주의사항(교육 목적 고지 포함)`;
+업로드된 차트 이미지를 보고 아래 스키마와 동일한 JSON만 출력해라.
+
+{
+  "summary": "문자열",
+  "marketState": "상승|하락|횡보",
+  "trendReason": "문자열",
+  "insight": "문자열",
+  "cautions": ["문자열", "문자열"],
+  "detected": {
+    "symbol": "문자열",
+    "timeframe": "문자열",
+    "indicators": ["문자열"]
+  }
+}
+
+규칙:
+- JSON 외 텍스트 금지
+- marketState는 반드시 상승/하락/횡보 중 하나
+- 초보자 기준으로 쉬운 표현 사용
+- 투자 자문이 아닌 교육용 고지 포함`;
 
 app.use(cors());
-app.use(express.static(path.join(__dirname)));
+app.use(express.static(ROOT_DIR));
 
-function createDemoAnalysis(file) {
-  const name = file.originalname.toLowerCase();
+function extractJsonObject(text) {
+  if (!text) {
+    throw new Error("모델 응답이 비어 있습니다.");
+  }
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  const raw = fenced ? fenced[1] : text;
+  const start = raw.indexOf("{");
+  const end = raw.lastIndexOf("}");
+  if (start < 0 || end < 0 || end <= start) {
+    throw new Error("모델 JSON 응답을 찾지 못했습니다.");
+  }
+  return JSON.parse(raw.slice(start, end + 1));
+}
 
-  let marketState = "횡보";
-  if (name.includes("up") || name.includes("bull")) marketState = "상승";
-  if (name.includes("down") || name.includes("bear")) marketState = "하락";
-
-  const trendReasonByState = {
-    상승: "고점과 저점이 점진적으로 높아지는 구조가 보이며, 거래량이 상승 구간에서 상대적으로 늘어났습니다.",
-    하락: "고점과 저점이 낮아지는 흐름이 나타나며, 반등 구간의 탄력이 이전 대비 약합니다.",
-    횡보: "가격이 지지/저항 범위 안에서 반복되며 뚜렷한 방향성보다 박스권 움직임이 우세합니다.",
-  };
-
-  const insightByState = {
-    상승:
-      "초보자라면 무리한 추격 매수보다, 지지 구간 재확인 후 분할 접근이라는 관점을 먼저 학습하는 것이 좋습니다.",
-    하락:
-      "하락 추세에서는 '싸 보인다'는 이유만으로 진입하지 말고, 추세 전환 신호가 확인될 때까지 관망 전략을 우선하세요.",
-    횡보:
-      "횡보 구간은 수익보다 손절 빈도가 높아질 수 있으니, 진입보다 기준선(지지/저항) 설정 연습에 집중하는 것이 유리합니다.",
-  };
-
+function normalizeAnalysis(data) {
+  const normalizedState = ["상승", "하락", "횡보"].includes(data.marketState)
+    ? data.marketState
+    : "횡보";
   return {
-    summary:
-      "업로드된 차트는 최근 구간의 가격 흐름과 주요 보조지표를 함께 보여주며, 단기 방향성과 변동성 구간을 파악하기에 적합한 형태입니다.",
-    marketState,
-    trendReason: trendReasonByState[marketState],
-    insight: insightByState[marketState],
-    cautions: [
-      "이 결과는 교육용 예시이며 실제 투자 자문이 아닙니다.",
-      "이미지 품질과 표시된 지표 종류에 따라 해석 정확도가 달라질 수 있습니다.",
-      "단일 차트만으로 판단하지 말고 거래량, 뉴스, 재무 정보 등 추가 근거를 함께 확인하세요.",
-    ],
+    summary: data.summary || "차트의 주요 흐름을 파악하지 못했습니다.",
+    marketState: normalizedState,
+    trendReason: data.trendReason || "추세 판단 근거를 충분히 얻지 못했습니다.",
+    insight: data.insight || "리스크 관리 중심으로 소액 분할 학습을 권장합니다.",
+    cautions: Array.isArray(data.cautions) ? data.cautions : [],
     detected: {
-      symbol: "이미지 기반 추정 필요",
-      timeframe: "1시간봉(추정)",
-      indicators: ["이동평균선", "RSI", "거래량"],
+      symbol: data.detected?.symbol || "미확인",
+      timeframe: data.detected?.timeframe || "미확인",
+      indicators: Array.isArray(data.detected?.indicators) ? data.detected.indicators : [],
     },
-    promptTemplate: ANALYSIS_PROMPT_TEMPLATE,
   };
 }
 
-app.post("/analyze", upload.single("image"), (req, res) => {
+function sleep(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+async function waitForGeminiSlot() {
+  const now = Date.now();
+  const waitMs = Math.max(0, nextGeminiRequestAt - now);
+  if (waitMs > 0) {
+    await sleep(waitMs);
+  }
+  nextGeminiRequestAt = Date.now() + GEMINI_MIN_INTERVAL_MS;
+}
+
+async function requestGeminiGenerate(modelName, file) {
+  await waitForGeminiSlot();
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`;
+  const geminiResponse = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      contents: [
+        {
+          role: "user",
+          parts: [
+            { text: ANALYSIS_PROMPT_TEMPLATE },
+            {
+              inline_data: {
+                mime_type: file.mimetype,
+                data: file.buffer.toString("base64"),
+              },
+            },
+          ],
+        },
+      ],
+      generationConfig: {
+        temperature: 0.2,
+        maxOutputTokens: 800,
+      },
+    }),
+  });
+
+  const body = await geminiResponse.json().catch(() => ({}));
+  if (!geminiResponse.ok) {
+    const apiError = new Error(body?.error?.message || `Gemini API 오류 (${geminiResponse.status})`);
+    apiError.status = geminiResponse.status;
+    apiError.code = body?.error?.status || "GEMINI_API_ERROR";
+    apiError.type = "gemini_api_error";
+    throw apiError;
+  }
+  return body;
+}
+
+async function analyzeWithGemini(file) {
+  if (!GEMINI_API_KEY) {
+    const configError = new Error("API키가 유효하지 않습니다.");
+    configError.status = 401;
+    configError.code = "INVALID_API_KEY";
+    configError.type = "config_error";
+    throw configError;
+  }
+
+  const normalizeModelName = (value) => value.replace(/^models\//, "");
+  const candidateModels = [normalizeModelName(MODEL_NAME), ...DEFAULT_GEMINI_MODELS]
+    .map((model) => model.trim())
+    .filter(Boolean)
+    .filter((model, index, arr) => arr.indexOf(model) === index);
+
+  let lastError = null;
+  for (const modelName of candidateModels) {
+    console.info(`[Gemini] generateContent 시도: model=${modelName}`);
+    try {
+      const body = await requestGeminiGenerate(modelName, file);
+      const text = body?.candidates?.[0]?.content?.parts?.map((part) => part.text).filter(Boolean).join("\n");
+      const parsed = extractJsonObject(text);
+      return normalizeAnalysis(parsed);
+    } catch (apiError) {
+      const lowerMsg = String(apiError.message || "").toLowerCase();
+      const modelNotFound = apiError.status === 404 || lowerMsg.includes("is not found for api version");
+      const rateLimited = apiError.status === 429;
+
+      if (rateLimited) {
+        console.warn(
+          `[Gemini] model=${modelName} 요청 한도(429). 이후 요청은 쿨다운 후에 허용됩니다.`,
+          apiError.message || ""
+        );
+        // Back off globally to avoid repeated 429 responses in free-tier limits.
+        nextGeminiRequestAt = Date.now() + Math.max(GEMINI_429_COOLDOWN_MS, GEMINI_MIN_INTERVAL_MS);
+        throw apiError;
+      }
+      if (modelNotFound) {
+        console.warn(
+          `[Gemini] model=${modelName} 사용 불가(404 또는 미지원). 다음 후보로 넘어갑니다.`,
+          apiError.message || ""
+        );
+        lastError = apiError;
+        continue;
+      }
+      console.warn(`[Gemini] model=${modelName} 처리 중 오류`, apiError.message || apiError);
+      throw apiError;
+    }
+  }
+
+  throw lastError || new Error("지원 가능한 Gemini 모델을 찾지 못했습니다.");
+}
+
+function toClientError(error) {
+  const rawMessage = error?.error?.message || error?.message || "알 수 없는 오류";
+  const status = typeof error?.status === "number" ? error.status : 500;
+  const code = error?.code || error?.name || "ANALYZE_ERROR";
+  const type = error?.type || "server_error";
+  let message = "분석 요청 처리 중 오류가 발생했습니다.";
+
+  if (status === 401 || /invalid api key|incorrect api key/i.test(rawMessage)) {
+    message = "API키가 유효하지 않습니다.";
+  } else if (status === 429) {
+    message = "요청 한도를 초과했습니다. 잠시 후 다시 시도하거나 사용량/결제 상태를 확인해 주세요.";
+  } else if (status >= 500) {
+    message = "Gemini 서버 또는 네트워크 오류가 발생했습니다.";
+  } else if (status === 400) {
+    message = rawMessage;
+  }
+
+  return { status, code, type, message };
+}
+
+app.post("/analyze", upload.single("image"), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({
       error: "이미지 파일(image)이 필요합니다.",
+      code: "MISSING_IMAGE_FILE",
+      type: "validation_error",
     });
   }
 
   if (!req.file.mimetype.startsWith("image/")) {
     return res.status(400).json({
       error: "이미지 파일만 업로드할 수 있습니다.",
+      code: "INVALID_IMAGE_MIMETYPE",
+      type: "validation_error",
     });
   }
 
-  const analysis = createDemoAnalysis(req.file);
-  return res.json(analysis);
+  try {
+    const analysis = await analyzeWithGemini(req.file);
+    return res.json(analysis);
+  } catch (error) {
+    const clientError = toClientError(error);
+    console.error("analyze error:", clientError, error);
+    return res.status(clientError.status).json({
+      error: clientError.message,
+      code: clientError.code,
+      type: clientError.type,
+    });
+  }
 });
 
-app.listen(PORT, () => {
+const httpServer = app.listen(PORT, () => {
   console.log(`Chart explainer demo server running: http://localhost:${PORT}`);
+  console.log("요청 대기 중입니다. (이 터미널은 서버가 돌아가는 동안 로그가 거의 없을 수 있습니다. 종료: Ctrl+C)");
+});
+
+httpServer.on("error", (err) => {
+  if (err.code === "EADDRINUSE") {
+    console.error(
+      `[서버] 포트 ${PORT}이(가) 이미 사용 중입니다. 다른 터미널의 \`node server.js\` / \`npm start\`를 종료하거나, .env에서 PORT를 바꾼 뒤 다시 실행하세요. (예: PORT=3001)`
+    );
+  } else {
+    console.error("[서버] listen 오류:", err);
+  }
+  process.exit(1);
 });

@@ -1,7 +1,9 @@
 const state = {
   file: null,
   isAnalyzing: false,
+  dragDepth: 0,
 };
+const API_BASE = `${window.location.protocol}//${window.location.hostname}:3000`;
 
 const dom = {
   dropZone: document.getElementById("drop-zone"),
@@ -53,12 +55,18 @@ function setSelectedFile(file) {
   if (!file) {
     state.file = null;
     dom.fileMeta.textContent = "선택된 이미지가 없습니다.";
+    dom.imageInput.value = "";
     setAnalyzeButtonState();
     return;
   }
 
   if (!isSupportedImage(file)) {
+    state.file = null;
+    dom.imageInput.value = "";
+    dom.fileMeta.textContent = "선택된 이미지가 없습니다.";
     setStatus("PNG/JPG/WEBP 이미지 파일만 업로드할 수 있습니다.");
+    resetResultView();
+    setAnalyzeButtonState();
     return;
   }
 
@@ -118,20 +126,23 @@ async function analyzeChart() {
   formData.append("image", state.file);
 
   try {
-    const response = await fetch("/analyze", {
+    const response = await fetch(`${API_BASE}/analyze`, {
       method: "POST",
       body: formData,
     });
 
+    const payload = await response.json().catch(() => null);
+
     if (!response.ok) {
-      throw new Error(`서버 응답 오류 (${response.status})`);
+      const serverError = payload?.error || `서버 응답 오류 (${response.status})`;
+      throw new Error(serverError);
     }
 
-    const data = await response.json();
+    const data = payload;
     renderResult(data);
     setStatus("분석이 완료되었습니다.");
   } catch (error) {
-    setStatus(`분석 실패: ${error.message}`);
+    setStatus(error.message || "분석 실패가 발생했습니다.");
   } finally {
     state.isAnalyzing = false;
     setAnalyzeButtonState();
@@ -139,26 +150,34 @@ async function analyzeChart() {
 }
 
 function bindDragAndDrop() {
-  ["dragenter", "dragover"].forEach((eventName) => {
+  ["dragenter", "dragover", "dragleave", "drop"].forEach((eventName) => {
     dom.dropZone.addEventListener(eventName, (event) => {
       event.preventDefault();
-      dom.dropZone.classList.add("is-active");
+      event.stopPropagation();
     });
   });
 
-  ["dragleave", "drop"].forEach((eventName) => {
-    dom.dropZone.addEventListener(eventName, (event) => {
-      event.preventDefault();
+  dom.dropZone.addEventListener("dragenter", () => {
+    state.dragDepth += 1;
+    dom.dropZone.classList.add("is-active");
+  });
+
+  dom.dropZone.addEventListener("dragleave", () => {
+    state.dragDepth = Math.max(0, state.dragDepth - 1);
+    if (state.dragDepth === 0) {
       dom.dropZone.classList.remove("is-active");
-    });
+    }
   });
 
   dom.dropZone.addEventListener("drop", (event) => {
+    state.dragDepth = 0;
+    dom.dropZone.classList.remove("is-active");
     const [file] = event.dataTransfer?.files || [];
     setSelectedFile(file);
   });
 
-  dom.dropZone.addEventListener("click", () => {
+  dom.dropZone.addEventListener("click", (event) => {
+    if (event.target.closest(".file-button")) return;
     dom.imageInput.click();
   });
 
