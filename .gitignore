@@ -3,6 +3,7 @@ node_modules/
 
 # Environment Variables (이미 추가하신 내용)
 **/.env
+.env.*
 .env.local
 .env.*.local
 
