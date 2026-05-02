@@ -42,6 +42,23 @@
       .markdown-body img {
         max-width: 100%;
       }
+      .markdown-body table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 12px 0;
+        font-size: 0.92rem;
+      }
+      .markdown-body th,
+      .markdown-body td {
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        padding: 8px 10px;
+        text-align: left;
+        vertical-align: top;
+      }
+      .markdown-body th {
+        background: rgba(0, 0, 0, 0.25);
+        white-space: nowrap;
+      }
     </style>
   </head>
   <body>
@@ -56,6 +73,9 @@
           const response = await fetch("./README.md", { cache: "no-store" });
           if (!response.ok) throw new Error(`HTTP ${response.status}`);
           const markdown = await response.text();
+          if (typeof marked !== "undefined" && marked.setOptions) {
+            marked.setOptions({ gfm: true, breaks: false });
+          }
           target.innerHTML = marked.parse(markdown);
         } catch (error) {
           target.textContent = `README.md를 불러오지 못했습니다: ${error.message}`;

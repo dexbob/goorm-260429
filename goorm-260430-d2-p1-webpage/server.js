@@ -19,6 +19,12 @@ const GEMINI_MIN_INTERVAL_MS = Number(process.env.GEMINI_MIN_INTERVAL_MS || 6000
 const GEMINI_429_COOLDOWN_MS = Number(process.env.GEMINI_429_COOLDOWN_MS || 20000);
 let nextGeminiRequestAt = 0;
 
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
+const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || "openrouter/free";
+const OPENROUTER_HTTP_REFERER = process.env.OPENROUTER_HTTP_REFERER || "";
+const OPENROUTER_APP_TITLE = process.env.OPENROUTER_APP_TITLE || "Chart explainer demo";
+const OPENROUTER_CHAT_URL = "https://openrouter.ai/api/v1/chat/completions";
+
 const ANALYSIS_PROMPT_TEMPLATE = `너는 주식 초보자를 위한 차트 해설 전문가다.
 업로드된 차트 이미지를 보고 아래 스키마와 동일한 JSON만 출력해라.
 
@@ -185,6 +191,97 @@ async function analyzeWithGemini(file) {
   throw lastError || new Error("지원 가능한 Gemini 모델을 찾지 못했습니다.");
 }
 
+async function analyzeWithOpenRouter(file) {
+  if (!OPENROUTER_API_KEY) {
+    const configError = new Error("OpenRouter API 키가 설정되어 있지 않습니다.");
+    configError.status = 401;
+    configError.code = "MISSING_OPENROUTER_KEY";
+    configError.type = "config_error";
+    throw configError;
+  }
+
+  const dataUrl = `data:${file.mimetype};base64,${file.buffer.toString("base64")}`;
+  const headers = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+  };
+  if (OPENROUTER_HTTP_REFERER) {
+    headers["HTTP-Referer"] = OPENROUTER_HTTP_REFERER;
+  }
+  if (OPENROUTER_APP_TITLE) {
+    headers["X-Title"] = OPENROUTER_APP_TITLE;
+  }
+
+  console.info(`[OpenRouter] chat/completions 시도: model=${OPENROUTER_MODEL}`);
+  const orResponse = await fetch(OPENROUTER_CHAT_URL, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      model: OPENROUTER_MODEL,
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: ANALYSIS_PROMPT_TEMPLATE },
+            { type: "image_url", image_url: { url: dataUrl } },
+          ],
+        },
+      ],
+      temperature: 0.2,
+      max_tokens: 800,
+    }),
+  });
+
+  const body = await orResponse.json().catch(() => ({}));
+  if (!orResponse.ok) {
+    const apiError = new Error(
+      body?.error?.message || `OpenRouter API 오류 (${orResponse.status})`
+    );
+    apiError.status = orResponse.status;
+    apiError.code = body?.error?.code || "OPENROUTER_API_ERROR";
+    apiError.type = "openrouter_api_error";
+    throw apiError;
+  }
+
+  const content = body?.choices?.[0]?.message?.content;
+  const text =
+    typeof content === "string"
+      ? content
+      : Array.isArray(content)
+        ? content.map((c) => (typeof c === "string" ? c : c?.text || "")).join("")
+        : "";
+  const parsed = extractJsonObject(text);
+  return normalizeAnalysis(parsed);
+}
+
+async function analyzeChartImage(file) {
+  const hasGemini = !!GEMINI_API_KEY;
+  const hasOpenRouter = !!OPENROUTER_API_KEY;
+
+  if (!hasGemini && !hasOpenRouter) {
+    const err = new Error("GEMINI_API_KEY 또는 OPENROUTER_API_KEY 중 하나 이상을 .env에 설정하세요.");
+    err.status = 401;
+    err.code = "MISSING_AI_KEYS";
+    err.type = "config_error";
+    throw err;
+  }
+
+  if (hasGemini) {
+    try {
+      const analysis = await analyzeWithGemini(file);
+      return { ...analysis, analysisProvider: "gemini" };
+    } catch (geminiError) {
+      console.warn("[Analyze] Gemini 실패:", geminiError.message || geminiError);
+      if (!hasOpenRouter) {
+        throw geminiError;
+      }
+    }
+  }
+
+  const analysis = await analyzeWithOpenRouter(file);
+  return { ...analysis, analysisProvider: "openrouter" };
+}
+
 function toClientError(error) {
   const rawMessage = error?.error?.message || error?.message || "알 수 없는 오류";
   const status = typeof error?.status === "number" ? error.status : 500;
@@ -192,13 +289,22 @@ function toClientError(error) {
   const type = error?.type || "server_error";
   let message = "분석 요청 처리 중 오류가 발생했습니다.";
 
-  if (status === 401 || /invalid api key|incorrect api key/i.test(rawMessage)) {
+  if (status === 401 || /invalid api key|incorrect api key|invalid x-api-key/i.test(rawMessage)) {
     message = "API키가 유효하지 않습니다.";
+  } else if (status === 402) {
+    message = "OpenRouter 사용 한도 또는 크레딧을 확인해 주세요.";
   } else if (status === 429) {
     message = "요청 한도를 초과했습니다. 잠시 후 다시 시도하거나 사용량/결제 상태를 확인해 주세요.";
   } else if (status >= 500) {
-    message = "Gemini 서버 또는 네트워크 오류가 발생했습니다.";
+    message =
+      type === "openrouter_api_error"
+        ? "OpenRouter 서버 또는 네트워크 오류가 발생했습니다."
+        : "Gemini 서버 또는 네트워크 오류가 발생했습니다.";
   } else if (status === 400) {
+    message = rawMessage;
+  }
+
+  if (type === "config_error" && code === "MISSING_AI_KEYS") {
     message = rawMessage;
   }
 
@@ -223,7 +329,7 @@ app.post("/analyze", upload.single("image"), async (req, res) => {
   }
 
   try {
-    const analysis = await analyzeWithGemini(req.file);
+    const analysis = await analyzeChartImage(req.file);
     return res.json(analysis);
   } catch (error) {
     const clientError = toClientError(error);

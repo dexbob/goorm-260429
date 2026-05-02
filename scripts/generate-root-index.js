@@ -168,6 +168,28 @@ function sanitizeHubCardBlurb(text) {
   return t;
 }
 
+/** `## 개요` 아래에서 첫 번째 문단(불릿 전까지) — 허브 카드 요약용. */
+function extractOverviewFirstProseParagraph(raw) {
+  const lines = raw.replace(/^\uFEFF/, "").split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    if (!OVERVIEW_SECTION_RE.test(lines[i])) continue;
+    const parts = [];
+    for (let j = i + 1; j < lines.length; j++) {
+      const line = lines[j];
+      if (/^##\s/.test(line)) break;
+      if (/^\s*[-*]\s/.test(line)) break;
+      if (!line.trim()) {
+        if (parts.length) break;
+        continue;
+      }
+      parts.push(line.trim());
+    }
+    const joined = parts.join(" ").trim();
+    return joined || null;
+  }
+  return null;
+}
+
 /** README 본 `#` 제목 다음부터 첫 `##` 전까지(도입부) 텍스트. */
 function extractReadmeIntroRaw(raw) {
   const lines = raw.replace(/^\uFEFF/, "").split(/\r?\n/);
@@ -204,6 +226,12 @@ function buildReadmeShortDescription(raw, { maxChars = 130 } = {}) {
 
   let oneLine = blocks.join(" ");
   if (!oneLine) {
+    const overviewPara = extractOverviewFirstProseParagraph(raw);
+    if (overviewPara) {
+      oneLine = stripInlineMarkdown(overviewPara.replace(/\s+/g, " ").trim());
+    }
+  }
+  if (!oneLine) {
     const bullet = extractFirstOverviewBullet(raw);
     if (!bullet) return null;
     const cleaned = sanitizeHubCardBlurb(bullet);
@@ -225,17 +253,15 @@ function buildReadmeShortDescription(raw, { maxChars = 130 } = {}) {
     }
   }
 
-  const first = (sentences[0] || oneLine).trim();
-  let out = first;
-  const second = sentences[1];
-  /** 첫 문장이 아주 짧을 때만 둘째를 붙인다(긴 첫 문장 뒤의 UI 나열 문장은 제외). */
-  const SHORT_FIRST_MAX_LEN = 24;
-  if (
-    second &&
-    first.length <= SHORT_FIRST_MAX_LEN &&
-    `${first} ${second}`.length <= maxChars
+  let out = (sentences[0] || oneLine).trim();
+  let idx = 1;
+  while (
+    idx < sentences.length &&
+    `${out} ${sentences[idx]}`.trim().length <= maxChars
   ) {
-    out = `${first} ${second}`;
+    out = `${out} ${sentences[idx]}`.trim();
+    idx += 1;
+    if (idx >= 3) break;
   }
 
   const cleaned = sanitizeHubCardBlurb(out);

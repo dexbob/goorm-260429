@@ -21,31 +21,86 @@
         </p>
       </header>
 
-      <section class="card upload-card" aria-labelledby="upload-title">
-        <div class="section-head">
-          <h2 id="upload-title">1) 차트 이미지 업로드</h2>
-          <p>Drag & Drop 또는 파일 선택 버튼으로 이미지를 추가하세요.</p>
+      <section class="card upload-card">
+        <div
+          id="drop-zone"
+          class="drop-zone"
+          tabindex="0"
+          role="button"
+          aria-label="이미지 선택 또는 드롭"
+        >
+          <span class="drop-zone-hint" id="drop-zone-hint">이미지를 놓거나 클릭하여 선택 · PNG / JPG / WEBP</span>
+        </div>
+        <input id="image-input" type="file" accept="image/png,image/jpeg,image/webp" hidden />
+
+        <div id="preview-panel" class="preview-panel is-hidden" aria-label="선택한 차트 미리보기">
+          <div class="preview-toolbar">
+            <div class="preview-toolbar-zoom toolbar-group" role="group" aria-label="확대·축소">
+              <button type="button" id="zoom-out" class="tool-btn tool-icon-btn" title="축소" aria-label="축소">
+                <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M19 13H5v-2h14v2z"/></svg>
+              </button>
+              <button type="button" id="zoom-reset" class="tool-btn tool-icon-btn" title="뷰 맞춤" aria-label="뷰 맞춤">
+                <!-- Material fit_screen: 프레임에 맞춤 -->
+                <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    fill="currentColor"
+                    d="M17 4h3c1.1 0 2 .9 2 2v2h-2V6h-3V4zM4 8V6h3V4H4c-1.1 0-2 .9-2 2v2h2zm16 8v2h-3v2h3c1.1 0 2-.9 2-2v-2h-2zM7 18H4v-2H2v2c0 1.1.9 2 2 2h3v-2z"
+                  />
+                </svg>
+              </button>
+              <button type="button" id="zoom-in" class="tool-btn tool-icon-btn" title="확대" aria-label="확대">
+                <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+              </button>
+            </div>
+            <div class="preview-toolbar-draw toolbar-group" role="group" aria-label="이동·그리기">
+              <button type="button" id="tool-pan" class="tool-btn tool-icon-btn is-active" title="이동" aria-label="이동" aria-pressed="true">
+                <!-- Material open_with: 팬/이동 -->
+                <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    fill="currentColor"
+                    d="M10 9h4V6h3l-5-5-5 5h3v3zm-1 1H6V7l-5 5 5 5v-3h3v-4zm14 2l-5-5v3h-3v4h3v3l5-5zm-9 3h-4v3H7l5 5 5-5h-3v-3z"
+                  />
+                </svg>
+              </button>
+              <button type="button" id="tool-pen" class="tool-btn tool-icon-btn" title="펜" aria-label="펜" aria-pressed="false">
+                <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+              </button>
+              <button type="button" id="tool-line" class="tool-btn tool-icon-btn" title="직선" aria-label="직선" aria-pressed="false">
+                <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 21l18-18-1.41-1.41L1.59 19.59z"/></svg>
+              </button>
+              <button type="button" id="tool-rect" class="tool-btn tool-icon-btn" title="사각형" aria-label="사각형" aria-pressed="false">
+                <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 3v18h18V3H3zm16 16H5V5h14v14z"/></svg>
+              </button>
+              <button type="button" id="tool-ellipse" class="tool-btn tool-icon-btn" title="원/타원" aria-label="원 또는 타원" aria-pressed="false">
+                <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8z"/></svg>
+              </button>
+              <input id="color-input" type="color" value="#3b82f6" class="visually-hidden" aria-label="선 색상" />
+              <button type="button" id="color-btn" class="tool-btn tool-icon-btn tool-color-btn" title="색상" aria-label="색상 선택">
+                <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9c.83 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1.01-.23-.26-.38-.61-.38-.99 0-.83.67-1.5 1.5-1.5H16c2.76 0 5-2.24 5-5 0-4.42-4.03-8-9-8zm-5.5 9c-.83 0-1.5-.67-1.5-1.5S5.67 9 6.5 9 8 9.67 8 10.5 7.33 12 6.5 12zm3-4C8.67 8 8 7.33 8 6.5S8.67 5 9.5 5s1.5.67 1.5 1.5S10.33 8 9.5 8zm5 0c-.83 0-1.5-.67-1.5-1.5S13.67 5 14.5 5s1.5.67 1.5 1.5S15.33 8 14.5 8zm3 4c-.83 0-1.5-.67-1.5-1.5S16.67 9 17.5 9s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/></svg>
+              </button>
+            </div>
+            <div class="preview-toolbar-right">
+              <button type="button" id="tool-download" class="tool-btn tool-icon-btn" title="이미지+그림 저장" aria-label="다운로드">
+                <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+              </button>
+            </div>
+          </div>
+          <div id="preview-viewport" class="preview-viewport">
+            <div id="preview-stage" class="preview-stage">
+              <div id="preview-media" class="preview-media">
+                <img id="preview-image" alt="선택한 차트" draggable="false" />
+                <canvas id="draw-canvas" class="draw-canvas" aria-label="그리기 레이어"></canvas>
+              </div>
+            </div>
+          </div>
         </div>
 
-        <div id="drop-zone" class="drop-zone" tabindex="0" role="button" aria-label="이미지 업로드 영역">
-          <p class="drop-title">여기에 차트 이미지를 드롭하세요</p>
-          <p class="drop-hint">PNG / JPG / WEBP 파일 지원</p>
-          <label class="file-button" for="image-input">파일 선택</label>
-          <input id="image-input" type="file" accept="image/png,image/jpeg,image/webp" hidden />
-        </div>
-
-        <div id="file-meta" class="file-meta" aria-live="polite">선택된 이미지가 없습니다.</div>
         <button id="analyze-button" class="analyze-button" type="button">분석하기</button>
-      </section>
-
-      <section class="card status-card" aria-live="polite">
-        <h2>2) 분석 상태</h2>
-        <p id="status-text">이미지를 선택하면 분석을 시작할 수 있습니다.</p>
       </section>
 
       <section id="result-card" class="card result-card is-hidden" aria-labelledby="result-title">
         <div class="section-head">
-          <h2 id="result-title">3) 분석 결과</h2>
+          <h2 id="result-title">분석 결과</h2>
           <span id="market-badge" class="market-badge">상태 대기</span>
         </div>
 
@@ -75,6 +130,15 @@
         </article>
       </section>
     </main>
+
+    <div id="error-modal" class="modal is-hidden" role="dialog" aria-modal="true" aria-labelledby="error-modal-title">
+      <div class="modal-backdrop" id="error-modal-backdrop"></div>
+      <div class="modal-box">
+        <h3 id="error-modal-title" class="modal-title">알림</h3>
+        <p id="error-modal-text" class="modal-text"></p>
+        <button type="button" id="error-modal-close" class="modal-close">확인</button>
+      </div>
+    </div>
 
     <script src="./script.js"></script>
   </body>
