@@ -43,6 +43,31 @@ async function resolveApiBaseFromHubMap() {
 const THEME_KEY = "todo_app_theme";
 const LANG_KEY = "todo_app_lang";
 const TODOS_LOCAL_KEY = "todo_app_todos_v1";
+const CAL_COLORS_KEY_LEGACY = "todo_app_cal_colors_v1";
+const CAL_PRESETS_KEY = "todo_app_cal_presets_v1";
+const CAL_PRESET_COUNT = 5;
+
+const CAL_DERIVED_TONES = /** @type {const} */ (["0", "25", "50", "75", "100"]);
+
+/** 테마별 5종 기본 조합(바깥=캘린더, 안=진행률) — 사용자 수정 시 슬롯별로 저장 */
+const DEFAULT_CAL_PRESETS = {
+  light: [
+    { base: "#fffbf5", progress: "#d97706" },
+    { base: "#f1f5f9", progress: "#2563eb" },
+    { base: "#fefce8", progress: "#16a34a" },
+    { base: "#fff1f2", progress: "#e11d48" },
+    { base: "#f5f3ff", progress: "#7c3aed" },
+  ],
+  dark: [
+    { base: "#322b26", progress: "#f59e0b" },
+    { base: "#1e293b", progress: "#38bdf8" },
+    { base: "#1a2e1a", progress: "#4ade80" },
+    { base: "#2a1818", progress: "#fb7185" },
+    { base: "#241f30", progress: "#a78bfa" },
+  ],
+};
+
+let calPresetsMigrated = false;
 
 let todos = [];
 let currentFilter = "all";
@@ -94,6 +119,14 @@ const i18n = {
     langNameZh: "中文",
     themeLightAria: "라이트 모드",
     themeDarkAria: "다크 모드",
+    styleLegend: "스타일",
+    calColorBase: "캘린더",
+    calColorProgress: "진행률",
+    calPresetGroupAria: "캘린더·진행률 색 조합 선택",
+    calPresetCombo: "조합",
+    calColorAriaBase: "할 일 없는 날짜 칸 배경색",
+    calColorAriaProgress:
+      "진행률 기준색 — 100%에 그대로 쓰이며, 진행 칸 배경은 캘린더색에서 이 색으로 비율 보간됩니다(0% 완료는 빈 칸과 살짝 다르게 표시)",
     devFooter1: "📅 2026년 5월 1일",
     devFooter2: "👤 Dexter",
     devFooter3:
@@ -148,6 +181,14 @@ const i18n = {
     langNameZh: "Chinese",
     themeLightAria: "Light mode",
     themeDarkAria: "Dark mode",
+    styleLegend: "Style",
+    calColorBase: "Calendar",
+    calColorProgress: "Progress",
+    calPresetGroupAria: "Choose a calendar and progress color pairing",
+    calPresetCombo: "Set",
+    calColorAriaBase: "Day cell background when there are no tasks",
+    calColorAriaProgress:
+      "Progress key color — 100% uses it as-is; filled cells blend from calendar color toward this color (0% done is slightly tinted vs empty cells)",
     devFooter1: "📅 May 1, 2026",
     devFooter2: "👤 Dexter",
     devFooter3:
@@ -202,6 +243,14 @@ const i18n = {
     langNameZh: "中国語",
     themeLightAria: "ライトモード",
     themeDarkAria: "ダークモード",
+    styleLegend: "スタイル",
+    calColorBase: "カレンダー",
+    calColorProgress: "進捗率",
+    calPresetGroupAria: "カレンダーと進捗の色の組み合わせ",
+    calPresetCombo: "セット",
+    calColorAriaBase: "タスクがない日のマス背景色",
+    calColorAriaProgress:
+      "進捗の基準色 — 100%はそのまま。埋まるマスはカレンダー色からこの色へ線形ブレンド(0%は空マスとわずかに差)",
     devFooter1: "📅 2026年5月1日",
     devFooter2: "👤 Dexter",
     devFooter3:
@@ -256,6 +305,13 @@ const i18n = {
     langNameZh: "中文",
     themeLightAria: "浅色模式",
     themeDarkAria: "深色模式",
+    styleLegend: "样式",
+    calColorBase: "日历",
+    calColorProgress: "进度",
+    calPresetGroupAria: "日历与进度颜色搭配",
+    calPresetCombo: "组合",
+    calColorAriaBase: "无任务时的日期格背景色",
+    calColorAriaProgress: "进度基准色 — 100% 不变；有任务的格子从日历色向该色线性过渡（0% 完成与空格子略有区分）",
     devFooter1: "📅 2026年5月1日",
     devFooter2: "👤 Dexter",
     devFooter3:
@@ -282,6 +338,248 @@ const i18n = {
 
 function t(key) {
   return i18n[currentLanguage][key] || i18n.ko[key] || key;
+}
+
+function calColorLabelKey(slot) {
+  return slot === "progress" ? "calColorProgress" : "calColorBase";
+}
+
+function calColorAriaKey(slot) {
+  return slot === "progress" ? "calColorAriaProgress" : "calColorAriaBase";
+}
+
+function normalizeHexColor(raw) {
+  let s = String(raw || "").trim();
+  if (!s.startsWith("#")) s = `#${s}`;
+  const m6 = /^#([0-9a-f]{6})$/i.exec(s);
+  if (m6) return `#${m6[1].toLowerCase()}`;
+  const m3 = /^#([0-9a-f]{3})$/i.exec(s);
+  if (m3) {
+    const a = m3[1];
+    return `#${a[0]}${a[0]}${a[1]}${a[1]}${a[2]}${a[2]}`.toLowerCase();
+  }
+  return "#888888";
+}
+
+function hexToRgb(hex) {
+  const h = normalizeHexColor(hex).slice(1);
+  return {
+    r: parseInt(h.slice(0, 2), 16),
+    g: parseInt(h.slice(2, 4), 16),
+    b: parseInt(h.slice(4, 6), 16),
+  };
+}
+
+function rgbToHex(r, g, b) {
+  const x = (n) =>
+    Math.max(0, Math.min(255, Math.round(Number(n))))
+      .toString(16)
+      .padStart(2, "0");
+  return `#${x(r)}${x(g)}${x(b)}`;
+}
+
+function mixRgbHex(hexA, hexB, t) {
+  const A = hexToRgb(hexA);
+  const B = hexToRgb(hexB);
+  return rgbToHex(
+    A.r + (B.r - A.r) * t,
+    A.g + (B.g - A.g) * t,
+    A.b + (B.b - A.b) * t,
+  );
+}
+
+/**
+ * 빈 칸: --cal-slot-base-bg(캘린더색)만 사용.
+ * 할 일 있음: base→progress RGB 선형 보간. 100%는 progress 그대로.
+ * 0% 완료(미완료만): base에 progress를 소량 섞어 빈 칸과 구분.
+ */
+function deriveToneColorsFromProgress(baseHex, progressHex, theme) {
+  const b = normalizeHexColor(baseHex);
+  const p = normalizeHexColor(progressHex);
+  const zeroDoneTint = theme === "dark" ? 0.11 : 0.085;
+  return {
+    "0": mixRgbHex(b, p, zeroDoneTint),
+    "25": mixRgbHex(b, p, 0.25),
+    "50": mixRgbHex(b, p, 0.5),
+    "75": mixRgbHex(b, p, 0.75),
+    "100": p,
+  };
+}
+
+function borderColorForFill(hex, theme) {
+  const c = hexToRgb(hex);
+  const mix = theme === "dark" ? 0.38 : 0.34;
+  const t = theme === "dark" ? { r: 255, g: 255, b: 255 } : { r: 0, g: 0, b: 0 };
+  return rgbToHex(
+    c.r + (t.r - c.r) * mix,
+    c.g + (t.g - c.g) * mix,
+    c.b + (t.b - c.b) * mix,
+  );
+}
+
+function migrateCalLegacyToPresetsIfNeeded() {
+  if (calPresetsMigrated) return;
+  calPresetsMigrated = true;
+  if (localStorage.getItem(CAL_PRESETS_KEY)) return;
+  const oldRaw = localStorage.getItem(CAL_COLORS_KEY_LEGACY);
+  if (!oldRaw) return;
+  try {
+    const old = JSON.parse(oldRaw);
+    const next = {};
+    (/** @type {("light" | "dark")[]} */ (["light", "dark"])).forEach((th) => {
+      const cur = old[th];
+      const presets = DEFAULT_CAL_PRESETS[th].map((p) => ({ ...p }));
+      if (cur && typeof cur === "object" && typeof cur.base === "string" && typeof cur.progress === "string") {
+        presets[0] = { base: normalizeHexColor(cur.base), progress: normalizeHexColor(cur.progress) };
+      }
+      next[th] = { selected: 0, presets };
+    });
+    localStorage.setItem(CAL_PRESETS_KEY, JSON.stringify(next));
+    localStorage.removeItem(CAL_COLORS_KEY_LEGACY);
+  } catch {
+    /* 무시 */
+  }
+}
+
+function readCalPresetsRoot() {
+  migrateCalLegacyToPresetsIfNeeded();
+  try {
+    const raw = localStorage.getItem(CAL_PRESETS_KEY);
+    if (!raw) return null;
+    const p = JSON.parse(raw);
+    return p && typeof p === "object" ? p : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeCalPresetsRoot(root) {
+  localStorage.setItem(CAL_PRESETS_KEY, JSON.stringify(root));
+}
+
+function getCalPresetsStateForTheme(theme) {
+  const def = DEFAULT_CAL_PRESETS[theme];
+  const root = readCalPresetsRoot();
+  const entry = root?.[theme];
+  if (!entry || !Array.isArray(entry.presets)) {
+    return { selected: 0, presets: def.map((p) => ({ ...p })) };
+  }
+  const presets = def.map((d, i) => ({
+    base: normalizeHexColor(entry.presets[i]?.base || d.base),
+    progress: normalizeHexColor(entry.presets[i]?.progress || d.progress),
+  }));
+  const selected = Math.min(CAL_PRESET_COUNT - 1, Math.max(0, Number(entry.selected) || 0));
+  return { selected, presets };
+}
+
+function setCalPresetsStateForTheme(theme, state) {
+  const root = readCalPresetsRoot() || {};
+  root[theme] = state;
+  writeCalPresetsRoot(root);
+}
+
+function getActivePresetPair() {
+  const theme = document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
+  const { selected, presets } = getCalPresetsStateForTheme(theme);
+  return presets[selected];
+}
+
+function persistActivePresetSlot(slot, hex) {
+  if (slot !== "base" && slot !== "progress") return;
+  const theme = document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
+  const { selected, presets } = getCalPresetsStateForTheme(theme);
+  const next = presets.map((p, i) =>
+    i === selected ? { ...p, [slot]: normalizeHexColor(hex) } : { ...p },
+  );
+  setCalPresetsStateForTheme(theme, { selected, presets: next });
+}
+
+function setActiveCalPresetIndex(idx) {
+  const theme = document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
+  const n = Math.min(CAL_PRESET_COUNT - 1, Math.max(0, Number(idx) || 0));
+  const { presets } = getCalPresetsStateForTheme(theme);
+  setCalPresetsStateForTheme(theme, { selected: n, presets });
+}
+
+function applyCalendarCustomColors() {
+  const root = document.documentElement;
+  const theme = root.getAttribute("data-theme") === "dark" ? "dark" : "light";
+  const { base, progress } = getActivePresetPair();
+  const tones = deriveToneColorsFromProgress(base, progress, theme);
+  root.style.setProperty("--cal-slot-base-bg", base);
+  root.style.setProperty("--cal-slot-base-border", borderColorForFill(base, theme));
+  CAL_DERIVED_TONES.forEach((k) => {
+    const bg = tones[k];
+    root.style.setProperty(`--cal-slot-${k}-bg`, bg);
+    root.style.setProperty(`--cal-slot-${k}-border`, borderColorForFill(bg, theme));
+  });
+}
+
+function syncCalPresetRadios() {
+  const theme = document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
+  const { selected } = getCalPresetsStateForTheme(theme);
+  document.querySelectorAll('input[name="cal-preset"]').forEach((el) => {
+    if (el instanceof HTMLInputElement) el.checked = Number(el.value) === selected;
+  });
+}
+
+function renderCalPresetFaces() {
+  const theme = document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
+  const { presets } = getCalPresetsStateForTheme(theme);
+  for (let i = 0; i < CAL_PRESET_COUNT; i += 1) {
+    const lab = document.querySelector(`#cal-preset-row label[data-cal-preset-index="${i}"]`);
+    const outer = lab?.querySelector(".drawer-cal-preset-outer");
+    const inner = lab?.querySelector(".drawer-cal-preset-inner");
+    if (!(outer instanceof HTMLElement) || !(inner instanceof HTMLElement)) continue;
+    const { base, progress } = presets[i];
+    outer.style.backgroundColor = base;
+    outer.style.borderColor = borderColorForFill(base, theme);
+    inner.style.backgroundColor = progress;
+  }
+}
+
+function syncCalColorPickersFromState() {
+  const colors = getActivePresetPair();
+  document.querySelectorAll("input.drawer-cal-color-input").forEach((inp) => {
+    if (!(inp instanceof HTMLInputElement)) return;
+    const slot = inp.getAttribute("data-cal-slot");
+    if (slot !== "base" && slot !== "progress") return;
+    const hex = colors[slot];
+    inp.value = hex;
+    const sw = inp.closest("label")?.querySelector(".drawer-cal-swatch");
+    if (sw instanceof HTMLElement) sw.style.backgroundColor = hex;
+    const wrap = inp.closest(".drawer-cal-swatch-btn");
+    if (wrap instanceof HTMLElement) wrap.setAttribute("title", hex);
+  });
+}
+
+function syncCalStyleDrawerUi() {
+  syncCalPresetRadios();
+  syncCalColorPickersFromState();
+  renderCalPresetFaces();
+}
+
+function refreshCalColorDrawerI18n() {
+  const leg = document.getElementById("calendar-colors-legend");
+  if (leg) leg.textContent = t("styleLegend");
+  document.getElementById("cal-preset-row")?.setAttribute("aria-label", t("calPresetGroupAria"));
+  document.querySelectorAll("[data-cal-label-slot]").forEach((el) => {
+    const slot = el.getAttribute("data-cal-label-slot");
+    if (!slot) return;
+    el.textContent = t(calColorLabelKey(slot));
+  });
+  document.querySelectorAll("input.drawer-cal-color-input").forEach((inp) => {
+    if (!(inp instanceof HTMLInputElement)) return;
+    const slot = inp.getAttribute("data-cal-slot");
+    if (!slot) return;
+    inp.setAttribute("aria-label", t(calColorAriaKey(slot)));
+  });
+  document.querySelectorAll("#cal-preset-row label[data-cal-preset-index]").forEach((lab) => {
+    const i = Number(lab.getAttribute("data-cal-preset-index"));
+    if (!Number.isFinite(i)) return;
+    lab.setAttribute("aria-label", `${t("calPresetCombo")} ${i + 1}`);
+  });
+  syncCalStyleDrawerUi();
 }
 
 function stackItemsForLang() {
@@ -727,9 +1025,18 @@ function renderCalendar() {
 
     if (stats.total > 0) {
       btn.classList.add("has-todos");
-      const progress = Math.max(0, Math.min(1, stats.done / stats.total));
-      const progressStep = Math.min(5, Math.max(1, Math.ceil(progress * 5)));
-      btn.classList.add(`progress-${progressStep}`);
+      let tone = "0";
+      if (stats.done === stats.total) {
+        tone = "100";
+      } else {
+        const r = stats.done / stats.total;
+        if (r <= 0) tone = "0";
+        else if (r <= 0.25) tone = "25";
+        else if (r <= 0.5) tone = "50";
+        else if (r <= 0.75) tone = "75";
+        else tone = "75";
+      }
+      btn.classList.add(`cal-tone-${tone}`);
       if (stats.done === stats.total) btn.classList.add("is-all-done");
       const statsWrap = document.createElement("span");
       statsWrap.className = "calendar-day-stats";
@@ -803,6 +1110,7 @@ function refreshDrawerControlsI18n() {
   document.querySelector('label[data-theme-opt="light"]')?.setAttribute("aria-label", t("themeLightAria"));
   document.querySelector('label[data-theme-opt="dark"]')?.setAttribute("aria-label", t("themeDarkAria"));
   document.querySelector(".drawer-footer")?.setAttribute("aria-label", t("drawerFooterMetaAria"));
+  refreshCalColorDrawerI18n();
 }
 
 function setTheme(theme) {
@@ -811,6 +1119,8 @@ function setTheme(theme) {
   html.setAttribute("data-theme", normalized);
   localStorage.setItem(THEME_KEY, normalized);
   syncThemeRadios();
+  applyCalendarCustomColors();
+  syncCalStyleDrawerUi();
 }
 
 function updateHeaderDateButtonState() {
@@ -862,7 +1172,7 @@ function applyLanguage(lang) {
   document.documentElement.lang = currentLanguage;
 
   document.getElementById("app-title").textContent = t("appTitle");
-  document.getElementById("drawer-title").textContent = t("drawerTitle");
+  document.getElementById("options-drawer")?.setAttribute("aria-label", t("drawerTitle"));
   document.getElementById("calendar-heading").textContent = t("calendarTitle");
   updateHeaderDateButtonState();
 
@@ -994,6 +1304,22 @@ document.addEventListener("DOMContentLoaded", async () => {
   drawerBody?.addEventListener("change", (event) => {
     const tgt = event.target;
     if (!(tgt instanceof HTMLInputElement)) return;
+    if (tgt.classList.contains("drawer-cal-color-input")) {
+      const slot = tgt.getAttribute("data-cal-slot");
+      if (!slot) return;
+      persistActivePresetSlot(slot, tgt.value);
+      applyCalendarCustomColors();
+      syncCalStyleDrawerUi();
+      renderCalendar();
+      return;
+    }
+    if (tgt.name === "cal-preset") {
+      setActiveCalPresetIndex(Number(tgt.value));
+      applyCalendarCustomColors();
+      syncCalStyleDrawerUi();
+      renderCalendar();
+      return;
+    }
     if (tgt.name === "app-language") {
       applyLanguage(tgt.value);
       setDrawerOpen(false);

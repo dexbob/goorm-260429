@@ -44,8 +44,228 @@ function buildDescription(dirname) {
     return "루트에 바로 연결되는 독립 정적 페이지입니다.";
   }
 
-  const [, cohort, day, project] = match;
-  return `구름 ${cohort} 과정의 Day ${day}, Project ${project} 연습 페이지입니다.`;
+  return "이 폴더의 웹 화면으로 바로 들어갈 수 있습니다.";
+}
+
+/** 인라인 마크다운을 제거해 카드 설명용 한 줄 텍스트로 만든다. */
+function stripInlineMarkdown(text) {
+  return text
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/\*([^*]+)\*/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\[([^\]]+)]\([^)]+\)/g, "$1")
+    .trim();
+}
+
+function decodeBasicHtmlEntities(text) {
+  return text
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)));
+}
+
+function stripHtmlTags(text) {
+  return text.replace(/<[^>]+>/g, "").trim();
+}
+
+/**
+ * 프로젝트 index.html에서 브라우저 탭에 쓰이는 웹 이름을 읽는다.
+ * <title>이 없으면 첫 <h1> 텍스트를 사용한다.
+ */
+function extractWebTitleFromIndex(indexPath) {
+  if (!fs.existsSync(indexPath)) return null;
+
+  let html;
+  try {
+    html = fs.readFileSync(indexPath, "utf8");
+  } catch {
+    return null;
+  }
+
+  const pickFromInner = (inner) => {
+    const text = decodeBasicHtmlEntities(
+      stripHtmlTags(inner).replace(/\s+/g, " ").trim()
+    );
+    if (!text) return null;
+    const pipe = text.indexOf("|");
+    if (pipe === -1) return text;
+    const left = text.slice(0, pipe).trim();
+    return left || text;
+  };
+
+  const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  if (titleMatch) {
+    const t = pickFromInner(titleMatch[1]);
+    if (t) return t;
+  }
+
+  const h1Match = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
+  if (h1Match) {
+    const t = pickFromInner(h1Match[1]);
+    if (t) return t;
+  }
+
+  return null;
+}
+
+function parseReadmeFirstHeading(readmePath) {
+  if (!fs.existsSync(readmePath)) return null;
+  let raw;
+  try {
+    raw = fs.readFileSync(readmePath, "utf8");
+  } catch {
+    return null;
+  }
+  const line = raw.replace(/^\uFEFF/, "").split(/\r?\n/).find((l) => /^#\s+/.test(l));
+  if (!line) return null;
+  return line.replace(/^#\s+/, "").trim() || null;
+}
+
+const OVERVIEW_SECTION_RE = /^##\s+(개요|프로젝트 개요)\s*$/;
+
+/** `## 개요` 등에서 첫 불릿 한 줄만 (도입문이 없을 때 대체용). */
+function extractFirstOverviewBullet(raw) {
+  const lines = raw.replace(/^\uFEFF/, "").split(/\r?\n/);
+  let inSection = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (inSection) {
+      if (/^##\s/.test(line)) break;
+      const m = line.match(/^\s*-\s+(.+)$/);
+      if (m) {
+        return stripInlineMarkdown(m[1].replace(/\s+/g, " ").trim());
+      }
+      continue;
+    }
+    if (OVERVIEW_SECTION_RE.test(line)) {
+      inSection = true;
+    }
+  }
+
+  return null;
+}
+
+function truncateSummary(text, maxLen) {
+  if (text.length <= maxLen) return text;
+  const cut = text.slice(0, maxLen);
+  const lastSpace = cut.lastIndexOf(" ");
+  return (lastSpace > 60 ? cut.slice(0, lastSpace) : cut) + "…";
+}
+
+/** 루트 허브 카드용: 과정명·Day 등 메타 문구를 제거한다. */
+function sanitizeHubCardBlurb(text) {
+  if (!text) return text;
+  let t = text.replace(/\s+/g, " ").trim();
+  t = t.replace(/구름\s*\d+\s*과정의?\s*Day\s*\d+[^.!?。]*[.!?。]?/gi, "");
+  t = t.replace(/구름\s*\d+\s*과정[^.!?。]*[.!?。]?/g, "");
+  t = t.replace(/\bDay\s*\d+\s*,\s*/gi, "");
+  t = t.replace(/\s{2,}/g, " ").replace(/^\s*[.,]\s*/g, "").trim();
+  return t;
+}
+
+/** README 본 `#` 제목 다음부터 첫 `##` 전까지(도입부) 텍스트. */
+function extractReadmeIntroRaw(raw) {
+  const lines = raw.replace(/^\uFEFF/, "").split(/\r?\n/);
+  let sawH1 = false;
+  const bodyLines = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (!sawH1) {
+      if (/^#\s+/.test(line)) {
+        sawH1 = true;
+      }
+      continue;
+    }
+    if (/^##\s/.test(line)) break;
+    bodyLines.push(line);
+  }
+
+  return bodyLines.join("\n").trim();
+}
+
+/**
+ * 카드용 짧은 설명: README 도입부의 첫 문장(필요 시에만 둘째)만 쓰고 길이를 제한한다.
+ * 주요 기능 불릿 나열은 하지 않는다.
+ */
+function buildReadmeShortDescription(raw, { maxChars = 130 } = {}) {
+  const introRaw = extractReadmeIntroRaw(raw);
+  const blocks = introRaw
+    .split(/\n{2,}/)
+    .map((block) =>
+      stripInlineMarkdown(block.replace(/\s+/g, " ").trim())
+    )
+    .filter(Boolean);
+
+  let oneLine = blocks.join(" ");
+  if (!oneLine) {
+    const bullet = extractFirstOverviewBullet(raw);
+    if (!bullet) return null;
+    const cleaned = sanitizeHubCardBlurb(bullet);
+    return cleaned ? truncateSummary(cleaned, maxChars) : null;
+  }
+
+  let sentences = oneLine
+    .split(/(?<=[.!?。])\s+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  if (sentences.length <= 1 && oneLine.length > 60) {
+    const alt = oneLine
+      .split(/(?<=[다요임]\.)\s+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (alt.length > 1) {
+      sentences = alt;
+    }
+  }
+
+  const first = (sentences[0] || oneLine).trim();
+  let out = first;
+  const second = sentences[1];
+  /** 첫 문장이 아주 짧을 때만 둘째를 붙인다(긴 첫 문장 뒤의 UI 나열 문장은 제외). */
+  const SHORT_FIRST_MAX_LEN = 24;
+  if (
+    second &&
+    first.length <= SHORT_FIRST_MAX_LEN &&
+    `${first} ${second}`.length <= maxChars
+  ) {
+    out = `${first} ${second}`;
+  }
+
+  const cleaned = sanitizeHubCardBlurb(out);
+  if (!cleaned) return null;
+  return truncateSummary(cleaned, maxChars);
+}
+
+function getCardTitleAndDescription(dirname) {
+  const indexPath = path.join(ROOT_DIR, dirname, "index.html");
+  const readmePath = path.join(ROOT_DIR, dirname, "README.md");
+
+  const title =
+    extractWebTitleFromIndex(indexPath) ||
+    parseReadmeFirstHeading(readmePath) ||
+    formatExerciseTitle(dirname);
+
+  let description = buildDescription(dirname);
+  if (fs.existsSync(readmePath)) {
+    try {
+      const raw = fs.readFileSync(readmePath, "utf8");
+      const picked = buildReadmeShortDescription(raw);
+      if (picked) {
+        description = picked;
+      }
+    } catch {
+      /* keep buildDescription */
+    }
+  }
+
+  return { title, description };
 }
 
 function formatGeneratedAtKst(date = new Date()) {
@@ -88,8 +308,7 @@ function getExerciseDirectories() {
 }
 
 function renderExerciseCard(dirname) {
-  const title = formatExerciseTitle(dirname);
-  const description = buildDescription(dirname);
+  const { title, description } = getCardTitleAndDescription(dirname);
   const href = `./${dirname}/`;
   const readmeHtmlPath = path.join(ROOT_DIR, dirname, "README.html");
   const hasReadmeViewer = fs.existsSync(readmeHtmlPath);
@@ -138,11 +357,11 @@ function renderHeroOutlineSection(exerciseDirectories) {
     const readmeHtmlPath = path.join(ROOT_DIR, dirname, "README.html");
     if (!fs.existsSync(readmeHtmlPath)) continue;
     const readmeHref = `./${dirname}/README.html`;
-    const fullTitle = formatExerciseTitle(dirname);
+    const { title: displayTitle, description: subLine } = getCardTitleAndDescription(dirname);
     items.push(`            <li>
               <a href="${escapeHtml(readmeHref)}">
-                <span class="hero-outline-entry-title">${escapeHtml(dirname)}</span>
-                <span class="hero-outline-entry-sub">${escapeHtml(fullTitle)}</span>
+                <span class="hero-outline-entry-title">${escapeHtml(displayTitle)}</span>
+                <span class="hero-outline-entry-sub">${escapeHtml(subLine)}</span>
               </a>
             </li>`);
   }

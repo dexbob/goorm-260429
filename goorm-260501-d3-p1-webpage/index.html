@@ -6,6 +6,8 @@
     <!-- 루트 허브(예: 포트 5000)에서 이 파일만 여는데 API는 다른 포트(3333)에서 띄울 때: content 에 API 호스트까지 적기 -->
     <!-- <meta name="todo-api-origin" content="http://100.69.68.91:3333" /> -->
     <title>오늘의 할일</title>
+    <link rel="icon" type="image/png" href="./assets/favicon.png" sizes="72x72" />
+    <link rel="apple-touch-icon" href="./assets/favicon.png" />
     <link rel="stylesheet" href="./style.css" />
     <script defer src="./script.js"></script>
   </head>
@@ -24,34 +26,33 @@
         class="options-drawer"
         role="dialog"
         aria-modal="true"
-        aria-labelledby="drawer-title"
+        aria-label="옵션"
         hidden
       >
         <div class="drawer-header">
-          <h2 id="drawer-title" class="drawer-title">옵션</h2>
           <button id="drawer-close" class="drawer-close-btn" type="button" aria-label="닫기">
-            ×
+            <span class="drawer-close-icon" aria-hidden="true">×</span>
           </button>
         </div>
         <div class="drawer-body drawer-body-scroll">
           <fieldset class="drawer-choice-field">
             <legend id="language-label" class="drawer-choice-legend">언어</legend>
             <div class="drawer-choice-row drawer-lang-row">
-              <label class="drawer-pill-choice" data-lang-opt="ko">
-                <input class="drawer-choice-input" type="radio" name="app-language" value="ko" checked />
-                <span class="drawer-pill-face drawer-pill-emoji" aria-hidden="true">🇰🇷</span>
+              <label class="drawer-lang-flag" data-lang-opt="ko">
+                <input class="drawer-lang-flag-input" type="radio" name="app-language" value="ko" checked />
+                <img class="drawer-lang-flag-img" src="./assets/flags/kr.png" width="40" height="27" alt="" decoding="async" loading="lazy" />
               </label>
-              <label class="drawer-pill-choice" data-lang-opt="en">
-                <input class="drawer-choice-input" type="radio" name="app-language" value="en" />
-                <span class="drawer-pill-face drawer-pill-emoji" aria-hidden="true">🇺🇸</span>
+              <label class="drawer-lang-flag" data-lang-opt="en">
+                <input class="drawer-lang-flag-input" type="radio" name="app-language" value="en" />
+                <img class="drawer-lang-flag-img" src="./assets/flags/us.png" width="40" height="21" alt="" decoding="async" loading="lazy" />
               </label>
-              <label class="drawer-pill-choice" data-lang-opt="ja">
-                <input class="drawer-choice-input" type="radio" name="app-language" value="ja" />
-                <span class="drawer-pill-face drawer-pill-emoji" aria-hidden="true">🇯🇵</span>
+              <label class="drawer-lang-flag" data-lang-opt="ja">
+                <input class="drawer-lang-flag-input" type="radio" name="app-language" value="ja" />
+                <img class="drawer-lang-flag-img" src="./assets/flags/jp.png" width="40" height="27" alt="" decoding="async" loading="lazy" />
               </label>
-              <label class="drawer-pill-choice" data-lang-opt="zh">
-                <input class="drawer-choice-input" type="radio" name="app-language" value="zh" />
-                <span class="drawer-pill-face drawer-pill-emoji" aria-hidden="true">🇨🇳</span>
+              <label class="drawer-lang-flag" data-lang-opt="zh">
+                <input class="drawer-lang-flag-input" type="radio" name="app-language" value="zh" />
+                <img class="drawer-lang-flag-img" src="./assets/flags/cn.png" width="40" height="27" alt="" decoding="async" loading="lazy" />
               </label>
             </div>
           </fieldset>
@@ -59,14 +60,67 @@
           <fieldset class="drawer-choice-field">
             <legend id="theme-label" class="drawer-choice-legend">테마</legend>
             <div class="drawer-choice-row drawer-theme-row" role="presentation">
-              <label class="drawer-theme-seg" data-theme-opt="light">
-                <input class="drawer-choice-input" type="radio" name="app-theme" value="light" checked />
-                <span class="drawer-theme-face" aria-hidden="true">☀️</span>
+              <div class="drawer-theme-switch">
+                <label class="drawer-theme-opt" data-theme-opt="light">
+                  <input class="drawer-theme-input" type="radio" name="app-theme" value="light" checked />
+                  <span class="drawer-theme-icon" aria-hidden="true"><span class="drawer-theme-char">☀</span></span>
+                </label>
+                <label class="drawer-theme-opt" data-theme-opt="dark">
+                  <input class="drawer-theme-input" type="radio" name="app-theme" value="dark" />
+                  <span class="drawer-theme-icon" aria-hidden="true"><span class="drawer-theme-char">☾</span></span>
+                </label>
+              </div>
+            </div>
+          </fieldset>
+
+          <fieldset class="drawer-choice-field" id="calendar-colors-field">
+            <legend id="calendar-colors-legend" class="drawer-choice-legend"></legend>
+            <div class="drawer-cal-preset-shelf" id="cal-preset-row" role="radiogroup">
+              <label class="drawer-cal-preset" data-cal-preset-index="0">
+                <input type="radio" name="cal-preset" value="0" class="drawer-cal-preset-input" checked />
+                <span class="drawer-cal-preset-face">
+                  <span class="drawer-cal-preset-outer"><span class="drawer-cal-preset-inner"></span></span>
+                </span>
               </label>
-              <label class="drawer-theme-seg" data-theme-opt="dark">
-                <input class="drawer-choice-input" type="radio" name="app-theme" value="dark" />
-                <span class="drawer-theme-face" aria-hidden="true">🌙</span>
+              <label class="drawer-cal-preset" data-cal-preset-index="1">
+                <input type="radio" name="cal-preset" value="1" class="drawer-cal-preset-input" />
+                <span class="drawer-cal-preset-face">
+                  <span class="drawer-cal-preset-outer"><span class="drawer-cal-preset-inner"></span></span>
+                </span>
               </label>
+              <label class="drawer-cal-preset" data-cal-preset-index="2">
+                <input type="radio" name="cal-preset" value="2" class="drawer-cal-preset-input" />
+                <span class="drawer-cal-preset-face">
+                  <span class="drawer-cal-preset-outer"><span class="drawer-cal-preset-inner"></span></span>
+                </span>
+              </label>
+              <label class="drawer-cal-preset" data-cal-preset-index="3">
+                <input type="radio" name="cal-preset" value="3" class="drawer-cal-preset-input" />
+                <span class="drawer-cal-preset-face">
+                  <span class="drawer-cal-preset-outer"><span class="drawer-cal-preset-inner"></span></span>
+                </span>
+              </label>
+              <label class="drawer-cal-preset" data-cal-preset-index="4">
+                <input type="radio" name="cal-preset" value="4" class="drawer-cal-preset-input" />
+                <span class="drawer-cal-preset-face">
+                  <span class="drawer-cal-preset-outer"><span class="drawer-cal-preset-inner"></span></span>
+                </span>
+              </label>
+            </div>
+            <div class="drawer-cal-picker-block">
+              <div class="drawer-cal-picker-line" id="cal-picker-line">
+                <span class="drawer-cal-picker-label" data-cal-label-slot="base"></span>
+                <label class="drawer-cal-swatch-btn drawer-cal-swatch-compact" title="">
+                  <input type="color" class="drawer-cal-color-input" data-cal-slot="base" value="#fffbf5" />
+                  <span class="drawer-cal-swatch" aria-hidden="true"></span>
+                </label>
+                <span class="drawer-cal-picker-gap" aria-hidden="true"></span>
+                <span class="drawer-cal-picker-label" data-cal-label-slot="progress"></span>
+                <label class="drawer-cal-swatch-btn drawer-cal-swatch-compact" title="">
+                  <input type="color" class="drawer-cal-color-input" data-cal-slot="progress" value="#d97706" />
+                  <span class="drawer-cal-swatch" aria-hidden="true"></span>
+                </label>
+              </div>
             </div>
           </fieldset>
         </div>
