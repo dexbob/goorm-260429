@@ -51,7 +51,7 @@ npm start
 ## 참고
 
 - DB는 **Node 22 이상**의 내장 모듈 `node:sqlite`를 사용합니다. Node 20 이하에서는 서버가 시작 시 안내 메시지와 함께 종료됩니다.
-- 저장소 루트에서 **`./start-servers.sh`** 로 띄운 뒤 `http://<호스트>:<허브포트>/goorm-260501-d3-p1-webpage/` 로 열면, 루트의 **`hub-dev-ports.json`** 을 읽어 같은 호스트의 Node API 포트로 자동 연결됩니다(수동 `meta todo-api-origin` 없이 동작).
+- 저장소 루트에서 **`./start-servers.sh`** 로 띄운 뒤 `http://<호스트>:<허브포트>/goorm-260501-d3-p1-webpage/` 로 열면, 루트의 **`hub-dev-ports.json`** 을 읽어 같은 호스트의 Node API 포트로 자동 연결됩니다(수동 `meta todo-api-origin` 없이 동작). **`*.github.io` 에서는 이 허브 조회를 하지 않습니다** — 잘못된 포트가 잡히면 Pages에서 API를 찌르다 npm 안내가 뜰 수 있기 때문입니다.
 - 루트 연습 허브(예: 저장소 최상단에서 실행하는 Python `http.server`, 보통 포트 5000)로 이 프로젝트만 열면, 저장 시 **HTTP 501 (Not Implemented)** 이 납니다. Python 정적 서버는 `POST /api/todos`를 처리하지 않기 때문입니다. **반드시 이 폴더에서 `npm start` 후 나오는 주소**에서 사용하거나, 허브를 쓸 경우 `index.html`의 **`meta todo-api-origin`** 에 API 서버 URL(예: `http://내IP:3333`)을 지정하고 Node API 서버도 함께 띄우세요(CORS 허용됨).
 - 언어/테마 선택 UI는 `<select>`가 아니라 라디오(이모지 버튼) 형태입니다.
 - 언어 또는 테마를 변경하면 드로어(서브 메뉴)는 자동으로 닫힙니다.

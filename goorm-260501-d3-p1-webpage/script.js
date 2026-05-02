@@ -19,6 +19,8 @@ function isGithubPagesHost() {
 
 async function resolveApiBaseFromHubMap() {
   if (API_BASE) return;
+  /** 저장소 루트의 hub 파일이 `*.github.io/hub-dev-ports.json`으로 잡히면 잘못된 포트가 API_BASE에 들어가 Pages에서 API 시도가 이어짐 */
+  if (typeof location !== "undefined" && isGithubPagesHost()) return;
   if (typeof location === "undefined" || !/^https?:/i.test(location.protocol)) return;
   const parts = location.pathname.split("/").filter(Boolean);
   const projectDir = parts[0];
@@ -331,7 +333,9 @@ function shouldUseLocalFallback(error) {
     msg.includes("failed to fetch") ||
     msg.includes("networkerror") ||
     msg.includes("not implemented") ||
-    msg.includes("not found")
+    msg.includes("not found") ||
+    msg.includes("404:") ||
+    msg.includes("<!doctype")
   );
 }
 
@@ -938,8 +942,9 @@ function onTodoListChange(event) {
 
 document.addEventListener("DOMContentLoaded", async () => {
   await resolveApiBaseFromHubMap();
-  /** `meta todo-api-origin` 으로 외부 API를 쓰는 경우는 그대로 API 모드 유지 */
-  if (isGithubPagesHost() && !API_BASE) {
+  /** Pages에서는 hub가 잘못된 API_BASE를 넣을 수 있으므로 meta 가 없을 때만 로컬 모드 + 베이스 초기화 */
+  if (isGithubPagesHost() && !readTodoApiBase()) {
+    API_BASE = "";
     dataMode = "local";
   }
 
