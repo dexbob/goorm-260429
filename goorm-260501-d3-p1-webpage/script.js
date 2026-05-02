@@ -10,6 +10,13 @@ function readTodoApiBase() {
 /** `start-servers.sh` 가 루트에 쓰는 hub-dev-ports.json 으로 같은 호스트의 Node 포트 자동 연결 */
 let API_BASE = readTodoApiBase();
 
+/** GitHub Pages 등 동일 오리진에 Node API가 없는 호스트(커스텀 도메인 제외) */
+function isGithubPagesHost() {
+  if (typeof location === "undefined") return false;
+  const host = String(location.hostname || "").toLowerCase();
+  return host === "github.io" || host.endsWith(".github.io");
+}
+
 async function resolveApiBaseFromHubMap() {
   if (API_BASE) return;
   if (typeof location === "undefined" || !/^https?:/i.test(location.protocol)) return;
@@ -33,6 +40,7 @@ async function resolveApiBaseFromHubMap() {
 
 const THEME_KEY = "todo_app_theme";
 const LANG_KEY = "todo_app_lang";
+const TODOS_LOCAL_KEY = "todo_app_todos_v1";
 
 let todos = [];
 let currentFilter = "all";
@@ -45,6 +53,7 @@ let selectedDateKey = todayDateKey();
 
 /** 월별 통계(/api/stats/month) 결과 캐시 */
 let monthSummary = {};
+let dataMode = "api";
 
 function showError(message) {
   window.alert(message);
@@ -93,7 +102,7 @@ const i18n = {
       "HTML, CSS, Vanilla JavaScript",
       "Express — REST API 및 정적 파일 서빙",
       "SQLite — Node 내장 모듈 node:sqlite",
-      "LocalStorage — 테마·언어만 저장",
+      "LocalStorage — 테마·언어; API 없을 때 할 일·월 통계(예: GitHub Pages)",
     ],
     inputPlaceholder: "무엇을 해야 하나요?",
     add: "추가",
@@ -147,7 +156,7 @@ const i18n = {
       "HTML, CSS, Vanilla JavaScript",
       "Express — REST API and static hosting",
       "SQLite via Node built-in module node:sqlite",
-      "LocalStorage — theme and language only",
+      "LocalStorage — theme & language; todos & month stats when no API (e.g. GitHub Pages)",
     ],
     inputPlaceholder: "What needs to be done?",
     add: "Add",
@@ -201,7 +210,7 @@ const i18n = {
       "HTML, CSS, Vanilla JavaScript",
       "Express — REST API と静的ファイル配信",
       "SQLite — Node 組み込み node:sqlite",
-      "LocalStorage — テーマと言語のみ",
+      "LocalStorage — テーマ・言語; API なし時はタスク・月次集計 (例: GitHub Pages)",
     ],
     inputPlaceholder: "何をしますか?",
     add: "追加",
@@ -255,7 +264,7 @@ const i18n = {
       "HTML、CSS、原生 JavaScript",
       "Express — REST API 与静态资源",
       "SQLite — Node 内置 node:sqlite",
-      "LocalStorage — 仅保存主题与语言",
+      "LocalStorage — 主题与语言；无 API 时保存任务与月度统计（如 GitHub Pages）",
     ],
     inputPlaceholder: "需要完成什么?",
     add: "添加",
@@ -314,6 +323,78 @@ function showApiFailure(error, fallbackTKey) {
   showError(`${t(fallbackTKey)}\n(${error?.message ?? String(error)})`);
 }
 
+function shouldUseLocalFallback(error) {
+  if (!error) return false;
+  if (typeof error === "object" && error.apiCode === "STATIC_HTTP_SERVER") return true;
+  const msg = String(error?.message ?? error).toLowerCase();
+  return (
+    msg.includes("failed to fetch") ||
+    msg.includes("networkerror") ||
+    msg.includes("not implemented") ||
+    msg.includes("not found")
+  );
+}
+
+function readLocalTodoStore() {
+  try {
+    const raw = localStorage.getItem(TODOS_LOCAL_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeLocalTodoStore(store) {
+  localStorage.setItem(TODOS_LOCAL_KEY, JSON.stringify(store));
+}
+
+function makeTodoId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `todo-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function getLocalTodosByDate(dateKey) {
+  const store = readLocalTodoStore();
+  const list = store?.[dateKey];
+  if (!Array.isArray(list)) return [];
+  return list.map((todo) => ({
+    id: String(todo.id ?? makeTodoId()),
+    text: String(todo.text ?? ""),
+    completed: !!todo.completed,
+    taskDate: dateKey,
+    createdAt: Number(todo.createdAt) || Date.now(),
+    updatedAt: Number(todo.updatedAt) || Date.now(),
+  }));
+}
+
+function setLocalTodosByDate(dateKey, list) {
+  const store = readLocalTodoStore();
+  store[dateKey] = list;
+  writeLocalTodoStore(store);
+}
+
+function buildMonthSummaryFromLocal(year, month) {
+  const store = readLocalTodoStore();
+  const counts = {};
+  Object.entries(store).forEach(([key, value]) => {
+    if (!Array.isArray(value)) return;
+    const [y, m] = key.split("-").map(Number);
+    if (y !== year || m !== month) return;
+    let total = 0;
+    let done = 0;
+    value.forEach((todo) => {
+      total += 1;
+      if (todo?.completed) done += 1;
+    });
+    if (total > 0) counts[key] = { total, done };
+  });
+  return counts;
+}
+
 async function fetchJson(url, opts = {}) {
   const headers = { ...opts.headers };
   if (
@@ -341,6 +422,10 @@ async function fetchJson(url, opts = {}) {
       const body = typeof text === "string" ? text : "";
       if (/<!DOCTYPE\s+HTML/i.test(body) && /Error response/i.test(body)) {
         throw Object.assign(new Error("404 Not Found (static hub)"), { apiCode: "STATIC_HTTP_SERVER" });
+      }
+      /** GitHub Pages·정적 호스팅의 HTML 404 등 → LocalStorage 폴백으로 이어지게 */
+      if (/<!DOCTYPE/i.test(body)) {
+        throw Object.assign(new Error("404 Not Found (HTML)"), { apiCode: "STATIC_HTTP_SERVER" });
       }
     }
     const detail =
@@ -372,24 +457,46 @@ function startOfMonth(date) {
 }
 
 async function refreshMonthSummary() {
+  const y = calendarCursor.getFullYear();
+  const mo = calendarCursor.getMonth() + 1;
+  if (dataMode === "local") {
+    monthSummary = buildMonthSummaryFromLocal(y, mo);
+    return;
+  }
   try {
-    const y = calendarCursor.getFullYear();
-    const mo = calendarCursor.getMonth() + 1;
     const data = await fetchJson(`${API_BASE}/api/stats/month?year=${y}&month=${mo}`);
     monthSummary = data?.counts || {};
   } catch (e) {
+    if (shouldUseLocalFallback(e)) {
+      dataMode = "local";
+      monthSummary = buildMonthSummaryFromLocal(y, mo);
+      return;
+    }
     monthSummary = {};
-    console.error(e);
   }
 }
 
 async function loadTodosForSelectedDate() {
+  if (dataMode === "local") {
+    todos = getLocalTodosByDate(selectedDateKey);
+    renderTodos();
+    updateHeaderDateText();
+    return;
+  }
   try {
     const data = await fetchJson(`${API_BASE}/api/todos?date=${encodeURIComponent(selectedDateKey)}`);
     todos = Array.isArray(data?.todos) ? data.todos : [];
+    dataMode = "api";
     renderTodos();
     updateHeaderDateText();
   } catch (e) {
+    if (shouldUseLocalFallback(e)) {
+      dataMode = "local";
+      todos = getLocalTodosByDate(selectedDateKey);
+      renderTodos();
+      updateHeaderDateText();
+      return;
+    }
     todos = [];
     renderTodos();
     showApiFailure(e, "apiErrorLoad");
@@ -399,25 +506,83 @@ async function loadTodosForSelectedDate() {
 async function addTodoRemote(text) {
   const trimmed = String(text).trim();
   if (!trimmed) return;
-  await fetchJson(`${API_BASE}/api/todos`, {
-    method: "POST",
-    body: JSON.stringify({ text: trimmed, taskDate: selectedDateKey }),
-  });
+  if (dataMode === "local") {
+    const list = getLocalTodosByDate(selectedDateKey);
+    const now = Date.now();
+    list.push({
+      id: makeTodoId(),
+      text: trimmed,
+      completed: false,
+      taskDate: selectedDateKey,
+      createdAt: now,
+      updatedAt: now,
+    });
+    setLocalTodosByDate(selectedDateKey, list);
+    return;
+  }
+  try {
+    await fetchJson(`${API_BASE}/api/todos`, {
+      method: "POST",
+      body: JSON.stringify({ text: trimmed, taskDate: selectedDateKey }),
+    });
+  } catch (e) {
+    if (!shouldUseLocalFallback(e)) throw e;
+    dataMode = "local";
+    const list = getLocalTodosByDate(selectedDateKey);
+    const now = Date.now();
+    list.push({
+      id: makeTodoId(),
+      text: trimmed,
+      completed: false,
+      taskDate: selectedDateKey,
+      createdAt: now,
+      updatedAt: now,
+    });
+    setLocalTodosByDate(selectedDateKey, list);
+  }
 }
 
 async function deleteTodoRemote(id) {
-  await fetchJson(`${API_BASE}/api/todos/${encodeURIComponent(id)}`, {
-    method: "DELETE",
-  });
+  if (dataMode === "local") {
+    const list = getLocalTodosByDate(selectedDateKey).filter((x) => x.id !== id);
+    setLocalTodosByDate(selectedDateKey, list);
+    return;
+  }
+  try {
+    await fetchJson(`${API_BASE}/api/todos/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
+  } catch (e) {
+    if (!shouldUseLocalFallback(e)) throw e;
+    dataMode = "local";
+    const list = getLocalTodosByDate(selectedDateKey).filter((x) => x.id !== id);
+    setLocalTodosByDate(selectedDateKey, list);
+  }
 }
 
 async function toggleTodoRemote(id) {
   const todo = todos.find((x) => x.id === id);
   if (!todo) return;
-  await fetchJson(`${API_BASE}/api/todos/${encodeURIComponent(id)}`, {
-    method: "PATCH",
-    body: JSON.stringify({ completed: !todo.completed }),
-  });
+  if (dataMode === "local") {
+    const list = getLocalTodosByDate(selectedDateKey).map((x) =>
+      x.id === id ? { ...x, completed: !x.completed, updatedAt: Date.now() } : x,
+    );
+    setLocalTodosByDate(selectedDateKey, list);
+    return;
+  }
+  try {
+    await fetchJson(`${API_BASE}/api/todos/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ completed: !todo.completed }),
+    });
+  } catch (e) {
+    if (!shouldUseLocalFallback(e)) throw e;
+    dataMode = "local";
+    const list = getLocalTodosByDate(selectedDateKey).map((x) =>
+      x.id === id ? { ...x, completed: !x.completed, updatedAt: Date.now() } : x,
+    );
+    setLocalTodosByDate(selectedDateKey, list);
+  }
 }
 
 function filterTodos(type) {
@@ -773,6 +938,10 @@ function onTodoListChange(event) {
 
 document.addEventListener("DOMContentLoaded", async () => {
   await resolveApiBaseFromHubMap();
+  /** `meta todo-api-origin` 으로 외부 API를 쓰는 경우는 그대로 API 모드 유지 */
+  if (isGithubPagesHost() && !API_BASE) {
+    dataMode = "local";
+  }
 
   selectedDateKey = todayDateKey();
   calendarCursor = startOfMonth(new Date());
