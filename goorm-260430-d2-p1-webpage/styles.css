@@ -118,12 +118,25 @@ h1 {
 }
 
 .preview-toolbar {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
+  display: flex;
+  flex-wrap: nowrap;
   align-items: center;
-  gap: 10px 12px;
   width: 100%;
   margin-bottom: 6px;
+}
+
+.preview-toolbar-spacer {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 1px;
+  align-self: stretch;
+}
+
+.preview-toolbar-cell {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
 }
 
 .preview-toolbar-zoom {
@@ -131,26 +144,31 @@ h1 {
   flex-wrap: nowrap;
   align-items: center;
   gap: 6px;
-  justify-self: start;
-  justify-content: flex-start;
+  justify-content: center;
 }
 
 .preview-toolbar-draw {
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
-  gap: 4px;
-  justify-self: center;
+  gap: 3px;
   justify-content: center;
-  min-width: 0;
-  max-width: 100%;
 }
 
-.preview-toolbar-right {
+.preview-toolbar-history {
   display: flex;
+  flex-wrap: nowrap;
   align-items: center;
-  justify-content: flex-end;
-  justify-self: end;
+  gap: 6px;
+  justify-content: center;
+}
+
+.preview-toolbar-download {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px;
+  justify-content: center;
 }
 
 .toolbar-group {
@@ -160,14 +178,45 @@ h1 {
   background: rgba(15, 23, 42, 0.45);
 }
 
-.preview-toolbar-draw.toolbar-group {
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
-  scrollbar-width: thin;
+.preview-toolbar .toolbar-group {
+  padding: 2px 5px;
+  flex-shrink: 0;
+  overflow: visible;
 }
 
-.preview-toolbar-draw .tool-icon-btn {
+.preview-toolbar-draw.toolbar-group {
+  overflow: visible;
+}
+
+.preview-toolbar .tool-icon-btn {
   flex-shrink: 0;
+  min-width: 34px;
+  min-height: 34px;
+  padding: 0 5px;
+}
+
+.preview-toolbar .tool-btn {
+  min-width: 34px;
+  min-height: 34px;
+  padding: 0 5px;
+}
+
+@media (max-width: 440px) {
+  .preview-toolbar .tool-icon-btn,
+  .preview-toolbar .tool-btn {
+    min-width: 30px;
+    min-height: 32px;
+    padding: 0 3px;
+  }
+
+  .preview-toolbar-draw {
+    gap: 2px;
+  }
+
+  .preview-toolbar-zoom,
+  .preview-toolbar-history {
+    gap: 3px;
+  }
 }
 
 .toolbar-group .tool-btn {
@@ -180,6 +229,11 @@ h1 {
 
 .toolbar-group .tool-btn.is-active {
   background: rgba(59, 130, 246, 0.35);
+}
+
+.toolbar-group .tool-btn:disabled:hover {
+  background: transparent;
+  border-color: var(--line);
 }
 
 .toolbar-sep {
@@ -207,6 +261,16 @@ h1 {
 .tool-btn:hover {
   border-color: #5a7eb8;
   background: rgba(59, 130, 246, 0.12);
+}
+
+.tool-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.tool-btn:disabled:hover {
+  border-color: var(--line);
+  background: var(--surface-soft);
 }
 
 .tool-btn.is-active {
@@ -382,6 +446,35 @@ h1 {
   font-weight: 700;
   font-size: 0.95rem;
   cursor: pointer;
+}
+
+.modal--text-entry {
+  z-index: 60;
+}
+
+.modal-box--text-entry {
+  width: min(360px, calc(100% - 32px));
+  padding: 14px 16px;
+}
+
+.text-entry-input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--bg-accent);
+  color: var(--text);
+  font-size: 1rem;
+  font-family: inherit;
+  outline: none;
+}
+
+.text-entry-input:focus {
+  border-color: #7cb0ff;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
 }
 
 .result-card.is-hidden {
