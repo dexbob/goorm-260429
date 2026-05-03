@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Practice hub">
+  <rect width="32" height="32" rx="8" fill="#0f1428"/>
+  <circle cx="16" cy="16" r="3.2" fill="#9eb3ff"/>
+  <circle cx="9" cy="9" r="2.4" fill="#7c9cff"/>
+  <circle cx="23" cy="9" r="2.4" fill="#7c9cff"/>
+  <circle cx="9" cy="23" r="2.4" fill="#7c9cff"/>
+  <circle cx="23" cy="23" r="2.4" fill="#7c9cff"/>
+  <path
+    d="M9 9 L16 16 M23 9 L16 16 M9 23 L16 16 M23 23 L16 16"
+    stroke="#7c9cff"
+    stroke-width="1.6"
+    stroke-linecap="round"
+    opacity="0.9"
+  />
+</svg>

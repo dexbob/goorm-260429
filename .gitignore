@@ -23,6 +23,9 @@ dist/
 build/
 out/
 
+# generate-root-index.js 가 입력 지문으로 사용 (갱신 스킵 판별)
+scripts/.root-index-input.sha256
+
 # start-servers.sh 가 런타임에 생성 (저장소 루트)
 hub-dev-ports.json
 hub-dev-ports.json.tmp

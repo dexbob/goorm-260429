@@ -43,7 +43,7 @@ fi
 GENERATE_ROOT_INDEX_SCRIPT="${ROOT_DIR}/scripts/generate-root-index.js"
 
 if [[ -f "${GENERATE_ROOT_INDEX_SCRIPT}" ]]; then
-  echo "[start-servers] 루트 index.html 생성 스크립트 실행 중..." >&2
+  echo "[start-servers] 루트 index.html 생성 스크립트 실행 중(입력 변경 없으면 갱신 생략)..." >&2
   if ! node "${GENERATE_ROOT_INDEX_SCRIPT}" >&2; then
     echo "[start-servers] 경고: index.html 자동 생성에 실패했습니다. 기존 파일로 계속 진행합니다." >&2
   fi

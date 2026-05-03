@@ -1,8 +1,10 @@
+const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 
 const ROOT_DIR = path.resolve(__dirname, "..");
 const OUTPUT_FILE = path.join(ROOT_DIR, "index.html");
+const FINGERPRINT_FILE = path.join(__dirname, ".root-index-input.sha256");
 const STYLESHEET_PATH = "./styles.css";
 const IGNORED_DIRECTORIES = new Set([
   ".git",
@@ -333,6 +335,71 @@ function getExerciseDirectories() {
     .sort((left, right) => left.localeCompare(right));
 }
 
+function sha256HexOfBuffer(buf) {
+  return crypto.createHash("sha256").update(buf).digest("hex");
+}
+
+/** 파일이 없으면 "-" (해시에 안정적으로 포함). */
+function sha256HexOfFileOrMissing(filePath) {
+  if (!fs.existsSync(filePath)) return "-";
+  try {
+    return sha256HexOfBuffer(fs.readFileSync(filePath));
+  } catch {
+    return "!"; // 읽기 실패는 입력 변경으로 간주
+  }
+}
+
+/**
+ * index.html 내용에 반영되는 입력만 집계한다.
+ * (매 실행마다 바뀌는 생성 시각은 제외 — 출력 전체 비교로는 스킵할 수 없음.)
+ */
+function computeInputFingerprint() {
+  const exerciseDirectories = getExerciseDirectories();
+  const h = crypto.createHash("sha256");
+  const selfPath = path.join(__dirname, "generate-root-index.js");
+  try {
+    h.update(fs.readFileSync(selfPath));
+  } catch {
+    h.update("!");
+  }
+  h.update("\n");
+  h.update(exerciseDirectories.join("\0"));
+  h.update("\n");
+  for (const dirname of exerciseDirectories) {
+    const base = path.join(ROOT_DIR, dirname);
+    h.update(dirname);
+    h.update("\0");
+    h.update(sha256HexOfFileOrMissing(path.join(base, "index.html")));
+    h.update("\0");
+    h.update(sha256HexOfFileOrMissing(path.join(base, "README.md")));
+    h.update("\0");
+    h.update(fs.existsSync(path.join(base, "README.html")) ? "1" : "0");
+    h.update("\0");
+    h.update(fs.existsSync(path.join(base, "server.js")) ? "1" : "0");
+    h.update("\0");
+    h.update(sha256HexOfFileOrMissing(path.join(base, "package.json")));
+    h.update("\n");
+  }
+  return h.digest("hex");
+}
+
+function forceRegenerateRequested() {
+  if (process.env.FORCE_ROOT_INDEX === "1") return true;
+  if (process.argv.includes("--force")) return true;
+  return false;
+}
+
+function shouldSkipRegeneration(fingerprint) {
+  if (forceRegenerateRequested()) return false;
+  if (!fs.existsSync(OUTPUT_FILE)) return false;
+  if (!fs.existsSync(FINGERPRINT_FILE)) return false;
+  try {
+    return fs.readFileSync(FINGERPRINT_FILE, "utf8").trim() === fingerprint;
+  } catch {
+    return false;
+  }
+}
+
 function renderExerciseCard(dirname) {
   const { title, description } = getCardTitleAndDescription(dirname);
   const href = `./${dirname}/`;
@@ -424,6 +491,8 @@ function renderPage(exerciseDirectories) {
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" sizes="any" />
+    <link rel="icon" href="./favicon.ico" />
     <title>Goorm 260429 Practice Index</title>
     <meta
       name="description"
@@ -479,10 +548,23 @@ ${cardsMarkup}
 }
 
 function main() {
+  const fingerprint = computeInputFingerprint();
+  if (shouldSkipRegeneration(fingerprint)) {
+    console.log(
+      `Skipped ${path.relative(ROOT_DIR, OUTPUT_FILE)} (inputs unchanged; use FORCE_ROOT_INDEX=1 or --force to regenerate).`
+    );
+    return;
+  }
+
   const exerciseDirectories = getExerciseDirectories();
   const html = renderPage(exerciseDirectories);
 
   fs.writeFileSync(OUTPUT_FILE, html, "utf8");
+  try {
+    fs.writeFileSync(FINGERPRINT_FILE, `${fingerprint}\n`, "utf8");
+  } catch (err) {
+    console.warn(`Warning: could not write fingerprint file ${FINGERPRINT_FILE}: ${err.message}`);
+  }
   console.log(`Generated ${path.relative(ROOT_DIR, OUTPUT_FILE)} with ${exerciseDirectories.length} link(s).`);
 }
 
