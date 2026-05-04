@@ -313,7 +313,9 @@ function formatGeneratedAtKst(date = new Date()) {
 /** Express 등 Node API가 있으면 루트 정적 허브(포트 5000)만으로는 저장 API가 동작하지 않음을 안내한다. */
 function hasExpressBackend(dirname) {
   const dir = path.join(ROOT_DIR, dirname);
-  if (!fs.existsSync(path.join(dir, "server.js"))) return false;
+  const hasServer =
+    fs.existsSync(path.join(dir, "server.js")) || fs.existsSync(path.join(dir, "server.mjs"));
+  if (!hasServer) return false;
   const pkgPath = path.join(dir, "package.json");
   if (!fs.existsSync(pkgPath)) return false;
   try {
@@ -375,7 +377,11 @@ function computeInputFingerprint() {
     h.update("\0");
     h.update(fs.existsSync(path.join(base, "README.html")) ? "1" : "0");
     h.update("\0");
-    h.update(fs.existsSync(path.join(base, "server.js")) ? "1" : "0");
+    h.update(
+      fs.existsSync(path.join(base, "server.js")) || fs.existsSync(path.join(base, "server.mjs"))
+        ? "1"
+        : "0"
+    );
     h.update("\0");
     h.update(sha256HexOfFileOrMissing(path.join(base, "package.json")));
     h.update("\n");

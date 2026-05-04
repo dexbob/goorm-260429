@@ -11,6 +11,7 @@
 | Day 2 | `goorm-260430-d2-p1-webpage` | 차트 해설 AI 웹앱 |
 | Day 3-1 | `goorm-260501-d3-p1-webpage` | 날짜 기반 To-do + 캘린더 |
 | Day 3-2 | `goorm-260501-d3-p2-webpage` | 횟수 기반 습관 트래커 (습관제조기) |
+| Day 4 | `goorm-260504-d4-p1-webpage-v1` | 명언 카드 (OpenRouter + 폴백 샘플) |
 
 ## 바로 열기
 
@@ -18,6 +19,7 @@
 - [Day 2](./goorm-260430-d2-p1-webpage/)
 - [Day 3-1](./goorm-260501-d3-p1-webpage/)
 - [Day 3-2](./goorm-260501-d3-p2-webpage/)
+- [Day 4](./goorm-260504-d4-p1-webpage-v1/)
 
 ## 루트 인덱스 생성
 
@@ -37,7 +39,7 @@ node scripts/generate-root-index.js
 루트에서 `start-servers.sh`를 실행하면 다음을 함께 기동합니다.
 
 - 정적 허브 서버(Python)
-- `server.js` + `package.json`의 `scripts.start`가 있는 하위 Node 프로젝트
+- `server.js` 또는 `server.mjs` + `package.json`의 `scripts.start`가 있는 하위 Node 프로젝트
 
 ```bash
 ./start-servers.sh

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 루트 정적 허브 + "server.js + npm start 가 있는" 하위 프로젝트를 자동 기동합니다.
+# 루트 정적 허브 + "server.js 또는 server.mjs + npm start 가 있는" 하위 프로젝트를 자동 기동합니다.
 # 새 Node 서버 프로젝트를 추가하면 이 파일을 수정할 필요 없이, 아래 디스커버리 규칙에 맞으면 함께 뜹니다.
 # 종료: 이 터미널에서 Ctrl+C (정적 서버 및 기동한 npm 프로세스 정리).
 
@@ -106,7 +106,7 @@ preferred_port_from_env() {
   echo "${_val}"
 }
 
-# 출력: 줄 단위 디렉터리 절대경로 (server.js · package.json · start 스크립트 존재)
+# 출력: 줄 단위 디렉터리 절대경로 (server.js|server.mjs · package.json · start 스크립트 존재)
 discover_node_server_projects() {
   local sorted=()
   while IFS= read -r -d '' item; do
@@ -120,7 +120,10 @@ discover_node_server_projects() {
     if is_ignored_dirname "${name}"; then
       continue
     fi
-    if [[ ! -f "${d}/server.js" ]] || [[ ! -f "${d}/package.json" ]]; then
+    if [[ ! -f "${d}/package.json" ]]; then
+      continue
+    fi
+    if [[ ! -f "${d}/server.js" ]] && [[ ! -f "${d}/server.mjs" ]]; then
       continue
     fi
     if project_has_start_script "${d}"; then
@@ -348,7 +351,7 @@ if ! port_is_listening "${STATIC_PORT}"; then
 fi
 
 if (( ${#APP_DIRS[@]} == 0 )); then
-  echo "[안내] server.js + npm start 가 있는 하위 디렉터리가 없습니다. 정적 허브만 실행 중입니다." >&2
+  echo "[안내] server.js|server.mjs + npm start 가 있는 하위 디렉터리가 없습니다. 정적 허브만 실행 중입니다." >&2
 
   echo "[종료] Ctrl+C" >&2
 
