@@ -25,7 +25,7 @@
 ### 1) 이 폴더에서만 실행
 
 ```bash
-cd goorm-260504-d4-p1-webpage-v1
+cd goorm-260504-d4-p1-webpage
 npm install
 cp .env.example .env
 # .env 에 OPENROUTER_API_KEY=... 입력 (https://openrouter.ai/keys)
@@ -38,7 +38,7 @@ npm start
 
 저장소 루트에서 **`./start-servers.sh`** 를 실행하면 정적 허브(Python `http.server`)와, `server.js` 또는 **`server.mjs`** + `npm start` 가 있는 하위 Node 프로젝트가 함께 기동됩니다.
 
-- 허브 예: `http://localhost:5000/goorm-260504-d4-p1-webpage-v1/`
+- 허브 예: `http://localhost:5000/goorm-260504-d4-p1-webpage/`
 - 루트에 생성되는 **`hub-dev-ports.json`** 을 프론트가 읽어, 같은 호스트의 Node 포트로 `GET /api/quote` 요청을 보냅니다.
 - **GitHub Pages** (`*.github.io`) 에서는 허브 맵 조회를 하지 않습니다.
 
