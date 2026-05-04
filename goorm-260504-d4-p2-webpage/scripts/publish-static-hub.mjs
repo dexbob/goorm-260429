@@ -22,4 +22,8 @@ const outAssets = path.join(root, "assets");
 fs.rmSync(outAssets, { recursive: true, force: true });
 fs.cpSync(buildAssets, outAssets, { recursive: true });
 fs.copyFileSync(buildIndex, outIndex);
+const buildFavicon = path.join(buildDir, "favicon.svg");
+if (fs.existsSync(buildFavicon)) {
+  fs.copyFileSync(buildFavicon, path.join(root, "favicon.svg"));
+}
 console.log("[publish-static-hub] 루트 index.html + assets/ 갱신 → 정적 허브에서 …/프로젝트명/ 만으로 열 수 있습니다.");

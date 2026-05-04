@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- 일반적인 카드 아이콘: 뒤에 한 장, 앞에 한 장(세로 비율) -->
+  <rect
+    x="11.5"
+    y="6.5"
+    width="14"
+    height="19"
+    rx="2.2"
+    ry="2.2"
+    fill="#c9c4bd"
+    stroke="#9a948c"
+    stroke-width="0.6"
+  />
+  <rect
+    x="6.5"
+    y="5"
+    width="14"
+    height="19"
+    rx="2.2"
+    ry="2.2"
+    fill="#faf8f4"
+    stroke="#5c5852"
+    stroke-width="0.75"
+  />
+</svg>

@@ -2,7 +2,7 @@
 
 ## 개요
 
-**한국 명언 카드**는 카드를 클릭할 때마다 **한국 역사·문화권 인물의 명언(한국어)** 을 보여 주고, 그 아래에 **영문 번역**을 붙이는 소형 웹앱입니다. 하단에는 **저자 이름(한글만)** 과 **생몰년**, 그리고 **주요 업적(한국어 1~2문장)** 을 가운데 정렬로 배치합니다. 배경색은 무작위로 바뀌며, 전환 애니메이션이 적용됩니다.
+**한국 명언 카드**는 카드를 클릭할 때마다 **한국 역사·문화권 인물의 명언(한국어)** 을 보여 주고, 그 아래에 **영문 번역**을 붙이는 소형 웹앱입니다. 하단에는 **저자 이름(한글만)** 과 **생몰년**, 그리고 **주요 업적(한국어 1~2문장)** 을 가운데 정렬로 배치합니다. 카드 배경은 무작위 색상에 질감 이미지를 겹쳐 보여 주며, 전환 애니메이션이 적용됩니다.
 
 이 디렉터리는 **`goorm-260504-d4-p1-webpage`를 복사한 뒤** 범위를 **한국 인물·한국어 명언**으로 좁히고 UI·프롬프트·시드 데이터를 바꾼 버전입니다.
 
@@ -21,6 +21,13 @@
 - **프론트**: **React 19** + **TypeScript** + **Vite 6** (`src/`, `index.html`, `vite.config.ts`, `tsconfig.json`)
 - **백엔드**: `server.mjs` — `GET /api/quote` 에서 OpenRouter 호출, 응답 JSON의 `authorEn` 은 서버에서 비움. **`.build/index.html`이 없으면 기동 시 `npm run build`를 한 번 자동 실행**한 뒤, 정적 파일은 항상 **`.build/`**에서 제공합니다. 브라우저 URL은 **`/`** (예: `http://127.0.0.1:8792/`) 만 쓰면 됩니다. HTML·JS·CSS는 **`Cache-Control: no-store`** 로 내려 캐시된 옛 번들로 인한 흰 화면을 줄입니다.
 - **환경 변수**: `dotenv` (`.env`에 `OPENROUTER_API_KEY`, 선택 `PORT`)
+
+## UI/브랜딩 참고
+
+- 카드 배경 텍스처 이미지: `src/assets/card-texture.png`
+- 카드 텍스트 대비 보정 로직: `src/colorUtils.ts` (`cardTextColorVars`)
+- 파비콘 원본: `public/favicon.svg` (일반 카드 모양)
+- 빌드 시 파비콘은 해시 파일로 출력되며, `scripts/publish-static-hub.mjs`가 루트 `favicon.svg`도 동기화합니다.
 
 ## 실행 방법
 
@@ -55,9 +62,16 @@ npm run dev
 
 ### 루트 정적 허브 (`start-servers.sh`)
 
-- **`./start-servers.sh`**: Node 앱 기동 **직전**에 `vite.config.ts`(또는 `.js`)가 있고 **`.build/index.html`이 없으면** 해당 디렉터리에서 **`npm run build`** 를 한 번 실행해, 흰 화면(번들 없이 `npm start`만 된 경우)을 줄입니다.
+- **`./start-servers.sh`**: Node 앱 기동 전, Vite 프로젝트를 검사해 아래 조건이면 **자동 `npm run build`** 를 실행합니다.
+  - `.build/index.html` 이 없음
+  - 또는 루트 `index.html` 이 개발용 템플릿(`main.tsx` 포함) 상태
 - **Node**로 뜬 앱: `hub-dev-ports.json` 으로 `/api/quote` 가 해당 포트로 연결됩니다. 실제 화면은 요약에 나온 **`http://<호스트>:<Node포트>/`** 로 여세요(URL에 `.build` 없음).
-- Python 정적 서버의 `…/goorm-260504-d4-p2-webpage/` 만으로는 **`.tsx`를 브라우저가 실행할 수 없어** 카드 앱이 뜨지 않을 수 있습니다. **이 프로젝트는 위 Node 포트**로 여는 것을 권장합니다.
+- 정적 허브의 `…/goorm-260504-d4-p2-webpage/` 경로는 반드시 **빌드된 `index.html` + `assets/`** 를 사용해야 합니다. 위 자동 빌드가 실패하면 해당 링크에서 로더 문구만 남을 수 있으니 Node 포트 접속을 우선 확인하세요.
+
+## 배포 메모 (Netlify)
+
+- 이 프로젝트의 Vite 출력 폴더는 기본 `dist`가 아니라 **`.build`** 입니다(`vite.config.ts`의 `build.outDir`).
+- Netlify Publish directory 는 `.build` 로 설정합니다.
 
 ## API `GET /api/quote`
 

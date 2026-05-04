@@ -4,3 +4,4 @@ dist/
 # ensure-dev-index / publish-static-hub 가 생성 (원본은 index.vite.html)
 /index.html
 /assets/
+/favicon.svg

@@ -1,6 +1,7 @@
 import type { CSSProperties, KeyboardEvent } from "react";
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
+import cardTextureUrl from "./assets/card-texture.png";
 import { cardTextColorVars } from "./colorUtils";
 import { CARD_COLORS, getQuoteEngine, TRANSITIONS, type CardTransition } from "./quoteEngine";
 import { buildAuthorPrimaryLine } from "./quoteFormat";
@@ -161,7 +162,16 @@ export default function QuoteCard() {
             onClick={() => void showNextQuote()}
             onKeyDown={onKeyDown}
           >
-            <div className="card-fill" aria-hidden="true" style={{ backgroundColor: fillColor }} />
+            <div
+              className="card-fill"
+              aria-hidden="true"
+              style={
+                {
+                  backgroundColor: fillColor,
+                  ["--card-fill-texture" as string]: `url(${JSON.stringify(cardTextureUrl)})`,
+                } as CSSProperties
+              }
+            />
             <div ref={cardBodyRef} className={`card-body ${isIntro ? "card-body--intro" : ""}`}>
               <div className="card-block card-block--quote">
                 <p className="quote-ko">{quoteKo}</p>

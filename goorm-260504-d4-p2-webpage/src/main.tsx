@@ -1,6 +1,5 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import faviconUrl from "./assets/favicon.svg?url";
 import App from "./App";
 import "./index.css";
 
@@ -8,7 +7,7 @@ if (!document.querySelector("link[data-app-favicon]")) {
   const link = document.createElement("link");
   link.rel = "icon";
   link.type = "image/svg+xml";
-  link.href = faviconUrl;
+  link.href = `${import.meta.env.BASE_URL}favicon.svg`;
   link.dataset.appFavicon = "1";
   document.head.appendChild(link);
 }

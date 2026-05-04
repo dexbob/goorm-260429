@@ -50,35 +50,49 @@ function contrastBetween(bgRgb: Rgb, fgRgb: Rgb): number {
   return lighter / darker;
 }
 
+/** 질감·오버레이로 카드 면이 단색보다 밝아 보이므로, 글자 대비는 이 색 기준으로 판단한다 */
+const TEXT_CHOICE_BG_BLEED = 0.2;
+
+const shadowLightFg = (strong: boolean) =>
+  strong
+    ? "0 0 2px rgba(0, 0, 0, 0.82), 0 0 6px rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.55)"
+    : "0 0 1.5px rgba(0, 0, 0, 0.65), 0 1px 3px rgba(0, 0, 0, 0.42)";
+
+const shadowDarkFg = (strong: boolean) =>
+  strong
+    ? "0 0 1px rgba(255, 255, 255, 0.55), 0 1px 2px rgba(0, 0, 0, 0.42)"
+    : "0 0 1px rgba(255, 255, 255, 0.38), 0 1px 2px rgba(0, 0, 0, 0.22)";
+
 /** React `style`에 넣을 CSS 변수 묶음 */
 export function cardTextColorVars(bgHex: string): Record<string, string> {
   const rgb = parseHex(bgHex);
-  const black: Rgb = { r: 0, g: 0, b: 0 };
   const white: Rgb = { r: 255, g: 255, b: 255 };
-  const crBlack = contrastBetween(rgb, black);
-  const crWhite = contrastBetween(rgb, white);
+  const rgbForTextChoice = mixRgb(rgb, white, TEXT_CHOICE_BG_BLEED);
+  const black: Rgb = { r: 0, g: 0, b: 0 };
+  const crBlack = contrastBetween(rgbForTextChoice, black);
+  const crWhite = contrastBetween(rgbForTextChoice, white);
   const useDark = crBlack >= crWhite;
   const fg = useDark ? black : white;
-  const ratio = Math.max(crBlack, crWhite);
+  const chosenRatio = useDark ? crBlack : crWhite;
 
   const soft = useDark
     ? mixRgb(fg, { r: 72, g: 68, b: 64 }, 0.32)
     : mixRgb(fg, { r: 32, g: 30, b: 28 }, 0.2);
-  const softAlpha = ratio >= 4.5 ? (useDark ? 0.9 : 0.85) : useDark ? 0.95 : 0.92;
+  const softAlpha = chosenRatio >= 4.5 ? (useDark ? 0.9 : 0.85) : useDark ? 0.95 : 0.92;
 
   const vars: Record<string, string> = {
     "--card-fg": rgbToCss(fg),
     "--card-fg-soft": rgbToCss(soft, softAlpha),
     "--card-divider": useDark ? "rgba(0, 0, 0, 0.22)" : "rgba(255, 255, 255, 0.32)",
-    "--card-author-opacity": ratio < 4.5 ? "1" : "0.94",
+    "--card-author-opacity": chosenRatio < 4.5 ? "1" : "0.94",
   };
 
-  if (ratio < 4.5) {
-    vars["--card-fg-shadow"] = useDark
-      ? "0 0 1px rgba(255, 255, 255, 0.55), 0 1px 2px rgba(0, 0, 0, 0.42)"
-      : "0 0 1px rgba(0, 0, 0, 0.72), 0 1px 3px rgba(0, 0, 0, 0.55)";
+  const needStrongShadow = chosenRatio < 4.5;
+  if (useDark) {
+    vars["--card-fg-shadow"] = shadowDarkFg(needStrongShadow);
   } else {
-    vars["--card-fg-shadow"] = "none";
+    /* 밝은 글자는 무늬 위에서도 윤곽이 있어야 하므로 contrast 가 높아도 약한 그림자 유지 */
+    vars["--card-fg-shadow"] = shadowLightFg(needStrongShadow);
   }
 
   return vars;
