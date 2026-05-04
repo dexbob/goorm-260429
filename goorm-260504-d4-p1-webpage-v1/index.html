@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>명언 카드 생성기</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Literata:ital,opsz,wght@0,7..72,500;0,7..72,600;1,7..72,500&family=Noto+Serif+KR:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="./style.css" />
+    <script defer src="./script.js"></script>
+  </head>
+  <body>
+    <div class="page-bg" aria-hidden="true"></div>
+    <div class="container">
+      <div class="card-perspective">
+        <div
+          id="card"
+          class="card"
+          role="button"
+          tabindex="0"
+          aria-label="다음 명언 보기"
+        >
+          <div id="cardFill" class="card-fill" aria-hidden="true"></div>
+          <div id="cardBody" class="card-body">
+            <p id="quote" class="quote-ko">카드를 눌러 명언을 확인하세요</p>
+            <p id="author" class="quote-author" hidden></p>
+            <p id="original" class="quote-original" hidden></p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
