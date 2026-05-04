@@ -150,7 +150,7 @@ discover_static_web_projects() {
       continue
     fi
 
-    if [[ -f "${d}/index.html" ]]; then
+    if [[ -f "${d}/index.html" || -f "${d}/index.vite.html" ]]; then
       printf '%s\n' "${d}"
     fi
   done
@@ -172,6 +172,46 @@ append_pinned_static_projects() {
 
     if (( existing == 0 )); then
       STATIC_WEB_DIRS+=("${abs}")
+    fi
+  done
+}
+
+# 정적 허브가 프로젝트 디렉터리의 index.html 을 그대로 내리므로,
+# 루트 index 가 Vite 개발 템플릿(main.tsx)이거나 .build 가 없으면 npm run build 가 필요하다.
+has_vite_config() {
+  local dir="$1"
+  [[ -f "${dir}/vite.config.ts" ]] || [[ -f "${dir}/vite.config.js" ]] || [[ -f "${dir}/vite.config.mjs" ]]
+}
+
+vite_static_hub_needs_build() {
+  local dir="$1"
+  has_vite_config "${dir}" || return 1
+  [[ -f "${dir}/package.json" ]] || return 1
+  if [[ ! -f "${dir}/.build/index.html" ]]; then
+    return 0
+  fi
+  if [[ -f "${dir}/index.html" ]] && grep -qF "main.tsx" "${dir}/index.html"; then
+    return 0
+  fi
+  return 1
+}
+
+# Node 앱 목록 + 정적 웹 목록을 합쳐 한 번씩만 검사(npm install 직후 루트 index 가 dev 로 덮인 경우 포함).
+ensure_vite_projects_for_static_hub() {
+  declare -A vite_build_seen=()
+  local dir label
+  echo "[1b] Vite 프로젝트 → 정적 허브·Node용 산출물 확인, 필요 시 npm run build" >&2
+  for dir in "${APP_DIRS[@]:-}" "${STATIC_WEB_DIRS[@]:-}"; do
+    [[ -z "${dir}" ]] && continue
+    [[ -n "${vite_build_seen[$dir]:-}" ]] && continue
+    vite_build_seen["$dir"]=1
+    if ! vite_static_hub_needs_build "${dir}"; then
+      continue
+    fi
+    label="${dir##*/}"
+    echo "    • ${label}: .build 없음 또는 루트 index 가 개발용(main.tsx) → npm run build" >&2
+    if ! (cd "${dir}" && npm run build); then
+      echo "    [경고] ${label}: npm run build 실패 — 정적 허브 링크는 동작하지 않을 수 있습니다." >&2
     fi
   done
 }
@@ -289,7 +329,7 @@ write_hub_dev_ports_json() {
   done
   printf '}' >>"${tmp}"
   mv -f "${tmp}" "${HUB_DEV_PORTS_FILE}"
-  echo "[start-servers] 허브용 ${HUB_DEV_PORTS_FILE##*/} 작성 → http://<호스트>:${STATIC_PORT}/<프로젝트폴더>/ 에서 Node API 포트 자동 연결" >&2
+  echo "[start-servers] ${HUB_DEV_PORTS_FILE##*/} 작성 → 브라우저가 Node+Vite 앱의 /api 를 같은 호스트의 Node 포트로 붙일 때 사용" >&2
 }
 
 trap cleanup EXIT INT TERM HUP
@@ -350,6 +390,15 @@ if ! port_is_listening "${STATIC_PORT}"; then
   exit 1
 fi
 
+ensure_vite_projects_for_static_hub
+
+if [[ -f "${GENERATE_ROOT_INDEX_SCRIPT}" ]]; then
+  echo "[1c] Vite 빌드 반영 → 루트 index.html 재생성(프로젝트 폴더 URL만 쓰도록)" >&2
+  if ! node "${GENERATE_ROOT_INDEX_SCRIPT}" --force >&2; then
+    echo "[start-servers] 경고: 루트 index.html 재생성 실패 — 허브 링크가 오래된 상태일 수 있습니다." >&2
+  fi
+fi
+
 if (( ${#APP_DIRS[@]} == 0 )); then
   echo "[안내] server.js|server.mjs + npm start 가 있는 하위 디렉터리가 없습니다. 정적 허브만 실행 중입니다." >&2
 
@@ -383,7 +432,7 @@ done
 echo "" >&2
 echo "--- 열 주소 요약 ---"
 echo " 정적 허브     http://localhost:${STATIC_PORT}"
-echo " (같은 호스트로 접속 시) 아래 경로에서 연 Node 앱은 hub-dev-ports.json 으로 API 포트가 자동 연결됩니다."
+echo " Node+Vite(p2)는 빌드 후 프로젝트 루트 index.html 로 …/<프로젝트>/ 만 열어도 됩니다. /api 는 hub-dev-ports.json 로 Node 포트에 붙습니다."
 i=0
 while ((i < ${#APP_LABELS[@]})); do
 

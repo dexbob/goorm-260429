@@ -1,0 +1,28 @@
+{
+  "name": "goorm-260504-d4-p2-webpage",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "predev": "node scripts/ensure-dev-index.mjs",
+    "dev": "vite",
+    "dev:api": "node --watch server.mjs",
+    "prebuild": "node scripts/ensure-dev-index.mjs",
+    "build": "tsc --noEmit && vite build && node scripts/publish-static-hub.mjs",
+    "preview": "vite preview",
+    "postinstall": "node scripts/ensure-dev-index.mjs",
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/react": "^19.0.1",
+    "@types/react-dom": "^19.0.2",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "~5.7.2",
+    "vite": "^6.0.3"
+  }
+}

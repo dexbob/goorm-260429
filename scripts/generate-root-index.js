@@ -271,8 +271,23 @@ function buildReadmeShortDescription(raw, { maxChars = 130 } = {}) {
   return truncateSummary(cleaned, maxChars);
 }
 
+function resolveExerciseIndexHtmlPath(dirname) {
+  const base = path.join(ROOT_DIR, dirname);
+  const viteEntry = path.join(base, "index.vite.html");
+  if (fs.existsSync(viteEntry)) return viteEntry;
+  return path.join(base, "index.html");
+}
+
+function hasExerciseEntryHtml(dirname) {
+  const base = path.join(ROOT_DIR, dirname);
+  return (
+    fs.existsSync(path.join(base, "index.html")) ||
+    fs.existsSync(path.join(base, "index.vite.html"))
+  );
+}
+
 function getCardTitleAndDescription(dirname) {
-  const indexPath = path.join(ROOT_DIR, dirname, "index.html");
+  const indexPath = resolveExerciseIndexHtmlPath(dirname);
   const readmePath = path.join(ROOT_DIR, dirname, "README.md");
 
   const title =
@@ -326,6 +341,14 @@ function hasExpressBackend(dirname) {
   }
 }
 
+function hasViteConfig(dirname) {
+  const base = path.join(ROOT_DIR, dirname);
+  return (
+    fs.existsSync(path.join(base, "vite.config.ts")) ||
+    fs.existsSync(path.join(base, "vite.config.js"))
+  );
+}
+
 function getExerciseDirectories() {
   return fs
     .readdirSync(ROOT_DIR, { withFileTypes: true })
@@ -333,7 +356,7 @@ function getExerciseDirectories() {
     .map((entry) => entry.name)
     .filter((dirname) => !IGNORED_DIRECTORIES.has(dirname))
     .filter((dirname) => !dirname.startsWith("."))
-    .filter((dirname) => fs.existsSync(path.join(ROOT_DIR, dirname, "index.html")))
+    .filter((dirname) => hasExerciseEntryHtml(dirname))
     .sort((left, right) => left.localeCompare(right));
 }
 
@@ -371,6 +394,8 @@ function computeInputFingerprint() {
     const base = path.join(ROOT_DIR, dirname);
     h.update(dirname);
     h.update("\0");
+    h.update(sha256HexOfFileOrMissing(path.join(base, "index.vite.html")));
+    h.update("\0");
     h.update(sha256HexOfFileOrMissing(path.join(base, "index.html")));
     h.update("\0");
     h.update(sha256HexOfFileOrMissing(path.join(base, "README.md")));
@@ -384,6 +409,8 @@ function computeInputFingerprint() {
     );
     h.update("\0");
     h.update(sha256HexOfFileOrMissing(path.join(base, "package.json")));
+    h.update("\0");
+    h.update(sha256HexOfFileOrMissing(path.join(base, ".build", "index.html")));
     h.update("\n");
   }
   return h.digest("hex");
@@ -413,13 +440,19 @@ function renderExerciseCard(dirname) {
   const hasReadmeViewer = fs.existsSync(readmeHtmlPath);
   const readmeHref = `./${dirname}/README.html`;
   const needsNode = hasExpressBackend(dirname);
+  const vite = hasViteConfig(dirname);
 
   const secondBadge = needsNode
-    ? `<span class="badge warn">Node API · npm start</span>`
-    : `<span class="badge">Static HTML</span>`;
+    ? vite
+      ? `<span class="badge warn">Node API · React/Vite</span>`
+      : `<span class="badge warn">Node API · npm start</span>`
+    : vite
+      ? `<span class="badge">React/Vite</span>`
+      : `<span class="badge">Static HTML</span>`;
 
   const apiNoteMarkup = "";
 
+  const pathLabel = `${dirname}/index.html`;
   const linksMarkup = hasReadmeViewer
     ? `        <div class="card-link-row">
           <a class="card-link" href="${escapeHtml(href)}">페이지 열기</a>
@@ -437,7 +470,7 @@ function renderExerciseCard(dirname) {
           </header>
           <p>${escapeHtml(description)}</p>
 ${apiNoteMarkup}
-          <p class="path-label">${escapeHtml(dirname)}/index.html</p>
+          <p class="path-label">${escapeHtml(pathLabel)}</p>
 ${linksMarkup}
         </article>`;
 }
@@ -487,8 +520,10 @@ function renderPage(exerciseDirectories) {
   const cardsMarkup = exerciseDirectories.length
     ? exerciseDirectories.map(renderExerciseCard).join("\n")
     : "";
+  const firstDir = exerciseDirectories[0];
+  const firstHref = firstDir ? `./${firstDir}/` : "#exercise-list-heading";
   const primaryLinkMarkup = exerciseDirectories.length
-    ? `<a class="button-link primary" href="./${escapeHtml(exerciseDirectories[0])}/">첫 연습 페이지 열기</a>`
+    ? `<a class="button-link primary" href="${escapeHtml(firstHref)}">첫 연습 페이지 열기</a>`
     : `<a class="button-link primary" href="#exercise-list-heading">목록 보기</a>`;
   const generatedAt = formatGeneratedAtKst();
 

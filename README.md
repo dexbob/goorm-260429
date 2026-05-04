@@ -11,7 +11,8 @@
 | Day 2 | `goorm-260430-d2-p1-webpage` | 차트 해설 AI 웹앱 |
 | Day 3-1 | `goorm-260501-d3-p1-webpage` | 날짜 기반 To-do + 캘린더 |
 | Day 3-2 | `goorm-260501-d3-p2-webpage` | 횟수 기반 습관 트래커 (습관제조기) |
-| Day 4 | `goorm-260504-d4-p1-webpage` | 명언 카드 (OpenRouter + 폴백 샘플) |
+| Day 4-1 | `goorm-260504-d4-p1-webpage` | 명언 카드 (OpenRouter + 폴백 샘플) |
+| Day 4-2 | `goorm-260504-d4-p2-webpage` | 한국 명언 카드 (P1 분기, React/Vite 예정) |
 
 ## 바로 열기
 
@@ -19,7 +20,8 @@
 - [Day 2](./goorm-260430-d2-p1-webpage/)
 - [Day 3-1](./goorm-260501-d3-p1-webpage/)
 - [Day 3-2](./goorm-260501-d3-p2-webpage/)
-- [Day 4](./goorm-260504-d4-p1-webpage/)
+- [Day 4-1](./goorm-260504-d4-p1-webpage/)
+- [Day 4-2](./goorm-260504-d4-p2-webpage/)
 
 ## 루트 인덱스 생성
 
