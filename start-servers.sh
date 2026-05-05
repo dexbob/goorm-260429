@@ -25,6 +25,12 @@ PINNED_STATIC_DIRS=(
   "goorm-260501-d3-p2-webpage/streaky"
 )
 
+# 서버 시작 시 무조건 `npm run build` 를 돌려 .build 에 최신 프론트를 반영하는 Vite 프로젝트(루트 기준 상대경로).
+# (기본 규칙은 .build/index.html 이 있으면 빌드를 생략하므로, 수정 사항이 npm start(Node) 에 안 붙을 수 있음.)
+PINNED_VITE_ALWAYS_BUILD=(
+  "goorm-260504-d4-p2-webpage"
+)
+
 if ! command -v python3 >/dev/null 2>&1; then
   echo "python3 명령을 찾을 수 없습니다."
   exit 1
@@ -187,6 +193,17 @@ vite_static_hub_needs_build() {
   local dir="$1"
   has_vite_config "${dir}" || return 1
   [[ -f "${dir}/package.json" ]] || return 1
+
+  local abs="${dir%/}"
+  local rel="${abs#"${ROOT_DIR}"/}"
+
+  local pinned
+  for pinned in "${PINNED_VITE_ALWAYS_BUILD[@]}"; do
+    if [[ "${rel}" == "${pinned}" ]]; then
+      return 0
+    fi
+  done
+
   if [[ ! -f "${dir}/.build/index.html" ]]; then
     return 0
   fi
@@ -209,7 +226,17 @@ ensure_vite_projects_for_static_hub() {
       continue
     fi
     label="${dir##*/}"
-    echo "    • ${label}: .build 없음 또는 루트 index 가 개발용(main.tsx) → npm run build" >&2
+    local rel="${dir%/}"
+    rel="${rel#"${ROOT_DIR}"/}"
+    local why=" .build 없음 또는 루트 index 가 개발용(main.tsx)"
+    local p
+    for p in "${PINNED_VITE_ALWAYS_BUILD[@]}"; do
+      if [[ "${rel}" == "${p}" ]]; then
+        why=" PINNED_VITE_ALWAYS_BUILD(허브 기동 시 항상 최신 번들)"
+        break
+      fi
+    done
+    echo "    • ${label}:${why} → npm run build" >&2
     if ! (cd "${dir}" && npm run build); then
       echo "    [경고] ${label}: npm run build 실패 — 정적 허브 링크는 동작하지 않을 수 있습니다." >&2
     fi

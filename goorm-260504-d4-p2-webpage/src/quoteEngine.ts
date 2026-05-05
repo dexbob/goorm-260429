@@ -97,10 +97,20 @@ function getHubApiBase(): Promise<string> {
   return hubApiBasePromise;
 }
 
-export async function getQuoteApiUrl(): Promise<string> {
+async function resolvedApiOrigin(): Promise<string> {
   const base = await getHubApiBase();
-  const trimmed = String(base || "").replace(/\/$/, "");
+  return String(base || "").replace(/\/$/, "");
+}
+
+/** 정적 허브(hub-dev-ports.json)에서 열린 경우 Node 포트로 붙도록 절대 URL 반환 */
+export async function getQuoteApiUrl(): Promise<string> {
+  const trimmed = await resolvedApiOrigin();
   return trimmed ? `${trimmed}/api/quote` : "/api/quote";
+}
+
+export async function getTtsApiUrl(): Promise<string> {
+  const trimmed = await resolvedApiOrigin();
+  return trimmed ? `${trimmed}/api/tts` : "/api/tts";
 }
 
 export function createQuoteEngine(): QuoteEngine {

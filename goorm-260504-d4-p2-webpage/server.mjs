@@ -11,6 +11,16 @@ dotenv.config({ path: path.join(__dirname, ".env") });
 const PORT = Number(process.env.PORT, 10) || 8792;
 const API_KEY = (process.env.OPENROUTER_API_KEY || "").trim();
 
+const ELEVENLABS_API_KEY = (process.env.ELEVENLABS_API_KEY || "").trim();
+const ELEVENLABS_VOICE_ID = (process.env.ELEVENLABS_VOICE_ID || "").trim();
+const ELEVENLABS_MODEL_ID = (
+  process.env.ELEVENLABS_MODEL_ID || "eleven_multilingual_v2"
+).trim();
+const TTS_MAX_CHARS = Math.min(
+  Math.max(Number(process.env.TTS_MAX_CHARS, 10) || 4000, 200),
+  16000,
+);
+
 const BUILD_DIR = path.join(__dirname, ".build");
 
 /** `npm start` 만 했을 때 흰 화면(번들 없음) 방지 */
@@ -80,6 +90,92 @@ function truncateOneLine(s, max = 72) {
   const t = String(s || "").replace(/\s+/g, " ").trim();
   if (t.length <= max) return t;
   return `${t.slice(0, max - 1)}…`;
+}
+
+/** @returns {Promise<{ text: string; lang: string }>} */
+function readTtsJsonBody(req, maxBytes = 65536) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let total = 0;
+    req.on("data", (chunk) => {
+      total += chunk.length;
+      if (total > maxBytes) {
+        reject(new Error("Request body too large"));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on("end", () => {
+      try {
+        const raw = Buffer.concat(chunks).toString("utf8");
+        const obj = JSON.parse(raw);
+        const text = String(obj.text ?? "").trim();
+        const lang = String(obj.lang ?? "").trim().toLowerCase();
+        resolve({ text, lang });
+      } catch (e) {
+        reject(e instanceof Error ? e : new Error(String(e)));
+      }
+    });
+    req.on("error", reject);
+  });
+}
+
+async function synthesizeElevenLabs(text, lang) {
+  if (!ELEVENLABS_API_KEY || !ELEVENLABS_VOICE_ID) {
+    const err = new Error(
+      "TTS is not configured. Set ELEVENLABS_API_KEY and ELEVENLABS_VOICE_ID in .env",
+    );
+    err.code = "NO_TTS";
+    throw err;
+  }
+
+  const voiceId = encodeURIComponent(ELEVENLABS_VOICE_ID);
+  const url = new URL(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`);
+  url.searchParams.set("output_format", "mp3_44100_128");
+
+  const body = {
+    text,
+    model_id: ELEVENLABS_MODEL_ID,
+  };
+  if (lang === "ko" || lang === "en") {
+    body.language_code = lang;
+  }
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "xi-api-key": ELEVENLABS_API_KEY,
+      "Content-Type": "application/json",
+      Accept: "audio/mpeg",
+    },
+    body: JSON.stringify(body),
+  });
+
+  const arrBuf = await res.arrayBuffer();
+  const buf = Buffer.from(arrBuf);
+
+  if (!res.ok) {
+    let msg = buf.toString("utf8");
+    try {
+      const j = JSON.parse(msg);
+      const d = j.detail;
+      msg =
+        (typeof d === "string"
+          ? d
+          : Array.isArray(d) && d[0]?.msg
+            ? d.map((x) => x.msg).join("; ")
+            : d?.message) || msg;
+    } catch {
+      /* opaque body */
+    }
+    const err = new Error(truncateOneLine(msg, 400));
+    err.code = "ELEVENLABS_HTTP";
+    err.status = res.status;
+    throw err;
+  }
+
+  return buf;
 }
 
 async function fetchQuoteFromOpenRouter() {
@@ -200,7 +296,8 @@ function applyCors(req, res) {
   } else {
     res.setHeader("Access-Control-Allow-Origin", "*");
   }
-  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 }
 
 const server = http.createServer(async (req, res) => {
@@ -214,7 +311,10 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (url.pathname === "/api/quote" && req.method === "OPTIONS") {
+  if (
+    (url.pathname === "/api/quote" || url.pathname === "/api/tts") &&
+    req.method === "OPTIONS"
+  ) {
     applyCors(req, res);
     res.writeHead(204);
     res.end();
@@ -243,6 +343,58 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (url.pathname === "/api/tts" && req.method === "POST") {
+    applyCors(req, res);
+    res.setHeader("Cache-Control", "no-store");
+
+    let body;
+    try {
+      body = await readTtsJsonBody(req);
+    } catch (e) {
+      console.error("[/api/tts] 바디 파싱 실패:", e instanceof Error ? e.message : e);
+      res.writeHead(400, { "Content-Type": MIME[".json"] });
+      res.end(JSON.stringify({ error: true, message: "Invalid JSON body" }));
+      return;
+    }
+
+    const { text, lang } = body;
+    if (!text) {
+      res.writeHead(400, { "Content-Type": MIME[".json"] });
+      res.end(JSON.stringify({ error: true, message: "Missing text" }));
+      return;
+    }
+
+    if (lang !== "ko" && lang !== "en") {
+      res.writeHead(400, { "Content-Type": MIME[".json"] });
+      res.end(JSON.stringify({ error: true, message: 'lang must be "ko" or "en"' }));
+      return;
+    }
+
+    if (text.length > TTS_MAX_CHARS) {
+      res.writeHead(413, { "Content-Type": MIME[".json"] });
+      res.end(JSON.stringify({ error: true, message: `Text exceeds ${TTS_MAX_CHARS} characters` }));
+      return;
+    }
+
+    try {
+      const audioBuf = await synthesizeElevenLabs(text, lang);
+      res.writeHead(200, {
+        "Content-Type": "audio/mpeg",
+        "Content-Length": audioBuf.length,
+      });
+      res.end(audioBuf);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      const httpStatus = typeof e.status === "number" ? e.status : 0;
+      const status =
+        e.code === "NO_TTS" ? 503 : httpStatus >= 400 && httpStatus < 600 ? httpStatus : 502;
+      console.error("[/api/tts] ElevenLabs 실패:", msg);
+      res.writeHead(status, { "Content-Type": MIME[".json"] });
+      res.end(JSON.stringify({ error: true, message: msg }));
+    }
+    return;
+  }
+
   const root = STATIC_ROOT;
   const filePath = safeJoin(root, url.pathname);
   if (!filePath || !fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
@@ -264,7 +416,9 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   const mode = "Vite 빌드(.build) + API";
+  const ttsReady =
+    ELEVENLABS_API_KEY && ELEVENLABS_VOICE_ID ? "ElevenLabs TTS on" : "TTS disabled (set ELEVENLABS_*)";
   console.log(
-    `http://127.0.0.1:${PORT}/  (${mode})  OpenRouter key: ${API_KEY ? "loaded" : "missing — using client fallback"}`,
+    `http://127.0.0.1:${PORT}/  (${mode})  OpenRouter key: ${API_KEY ? "loaded" : "missing — using client fallback"}  |  ${ttsReady}`,
   );
 });
