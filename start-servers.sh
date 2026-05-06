@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-echo "[start-servers] 스크립트 시작 (잠시만 기다리세요…)" >&2
+echo "[start-servers] 서버를 시작합니다…" >&2
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 STATIC_PORT_START="${STATIC_PORT:-5000}"
@@ -29,6 +29,7 @@ PINNED_STATIC_DIRS=(
 # (기본 규칙은 .build/index.html 이 있으면 빌드를 생략하므로, 수정 사항이 npm start(Node) 에 안 붙을 수 있음.)
 PINNED_VITE_ALWAYS_BUILD=(
   "goorm-260504-d4-p2-webpage"
+  "goorm-260506-d5-p1-webpage"
 )
 
 if ! command -v python3 >/dev/null 2>&1; then
@@ -46,11 +47,59 @@ if ! command -v node >/dev/null 2>&1; then
   exit 1
 fi
 
+# goorm-260506-d5-p1-webpage: npm install, Python venv + requirements, .env 를 한 번에 맞춤 (OpenRouter 등)
+prepare_goorm_260506_d5_p1() {
+  local d="${ROOT_DIR}/goorm-260506-d5-p1-webpage"
+  [[ -d "${d}" ]] || return 0
+
+  if [[ ! -f "${d}/.env" ]] && [[ -f "${d}/.env.example" ]]; then
+    cp "${d}/.env.example" "${d}/.env"
+  fi
+
+  local d4="${ROOT_DIR}/goorm-260504-d4-p2-webpage/.env"
+  if [[ -f "${d}/.env" ]] && [[ -f "${d4}" ]]; then
+    if ! grep -qE '^OPENROUTER_API_KEY=.{3,}' "${d}/.env" 2>/dev/null; then
+      local kr
+      kr="$(grep -E '^OPENROUTER_API_KEY=.' "${d4}" 2>/dev/null | head -n1 || true)"
+      if [[ -n "${kr}" ]]; then
+        grep -vE '^[[:space:]]*OPENROUTER_API_KEY=' "${d}/.env" >"${d}/.env.tmp.$$" 2>/dev/null || true
+        [[ -f "${d}/.env.tmp.$$" ]] && mv -f "${d}/.env.tmp.$$" "${d}/.env"
+        printf '%s\n' "${kr}" >>"${d}/.env"
+      fi
+    fi
+  fi
+
+  if (cd "${d}" && npm install >/dev/null 2>&1); then
+    :
+  else
+    echo "    [경고] npm install 실패 — 해당 프로젝트 수동 확인" >&2
+  fi
+
+  if [[ -x "${d}/.venv/bin/pip" ]]; then
+    if "${d}/.venv/bin/pip" install -q -r "${d}/requirements.txt"; then
+      :
+    else
+      echo "    [경고] .venv pip install 실패" >&2
+    fi
+  elif python3 -m venv "${d}/.venv" 2>/dev/null && [[ -x "${d}/.venv/bin/pip" ]]; then
+    "${d}/.venv/bin/pip" install -q -U pip >/dev/null 2>&1 || true
+    if "${d}/.venv/bin/pip" install -q -r "${d}/requirements.txt"; then
+      :
+    fi
+  else
+    echo "    [안내] python3 -m venv 불가 시: apt install python3-venv 후 재시도 또는 pip --user" >&2
+    python3 -m pip install -q --user -r "${d}/requirements.txt" 2>/dev/null || \
+      python3 -m pip install -q --break-system-packages -r "${d}/requirements.txt" 2>/dev/null || \
+      echo "    [경고] 시스템 pip 로 requirements 설치 실패 — python3-venv 권장" >&2
+  fi
+}
+
+prepare_goorm_260506_d5_p1
+
 GENERATE_ROOT_INDEX_SCRIPT="${ROOT_DIR}/scripts/generate-root-index.js"
 
 if [[ -f "${GENERATE_ROOT_INDEX_SCRIPT}" ]]; then
-  echo "[start-servers] 루트 index.html 생성 스크립트 실행 중(입력 변경 없으면 갱신 생략)..." >&2
-  if ! node "${GENERATE_ROOT_INDEX_SCRIPT}" >&2; then
+  if ! node "${GENERATE_ROOT_INDEX_SCRIPT}" >/dev/null 2>&1; then
     echo "[start-servers] 경고: index.html 자동 생성에 실패했습니다. 기존 파일로 계속 진행합니다." >&2
   fi
 else
@@ -217,7 +266,6 @@ vite_static_hub_needs_build() {
 ensure_vite_projects_for_static_hub() {
   declare -A vite_build_seen=()
   local dir label
-  echo "[1b] Vite 프로젝트 → 정적 허브·Node용 산출물 확인, 필요 시 npm run build" >&2
   for dir in "${APP_DIRS[@]:-}" "${STATIC_WEB_DIRS[@]:-}"; do
     [[ -z "${dir}" ]] && continue
     [[ -n "${vite_build_seen[$dir]:-}" ]] && continue
@@ -228,16 +276,7 @@ ensure_vite_projects_for_static_hub() {
     label="${dir##*/}"
     local rel="${dir%/}"
     rel="${rel#"${ROOT_DIR}"/}"
-    local why=" .build 없음 또는 루트 index 가 개발용(main.tsx)"
-    local p
-    for p in "${PINNED_VITE_ALWAYS_BUILD[@]}"; do
-      if [[ "${rel}" == "${p}" ]]; then
-        why=" PINNED_VITE_ALWAYS_BUILD(허브 기동 시 항상 최신 번들)"
-        break
-      fi
-    done
-    echo "    • ${label}:${why} → npm run build" >&2
-    if ! (cd "${dir}" && npm run build); then
+    if ! (cd "${dir}" && npm run build >/dev/null 2>&1); then
       echo "    [경고] ${label}: npm run build 실패 — 정적 허브 링크는 동작하지 않을 수 있습니다." >&2
     fi
   done
@@ -356,7 +395,6 @@ write_hub_dev_ports_json() {
   done
   printf '}' >>"${tmp}"
   mv -f "${tmp}" "${HUB_DEV_PORTS_FILE}"
-  echo "[start-servers] ${HUB_DEV_PORTS_FILE##*/} 작성 → 브라우저가 Node+Vite 앱의 /api 를 같은 호스트의 Node 포트로 붙일 때 사용" >&2
 }
 
 trap cleanup EXIT INT TERM HUP
@@ -420,8 +458,7 @@ fi
 ensure_vite_projects_for_static_hub
 
 if [[ -f "${GENERATE_ROOT_INDEX_SCRIPT}" ]]; then
-  echo "[1c] Vite 빌드 반영 → 루트 index.html 재생성(프로젝트 폴더 URL만 쓰도록)" >&2
-  if ! node "${GENERATE_ROOT_INDEX_SCRIPT}" --force >&2; then
+  if ! node "${GENERATE_ROOT_INDEX_SCRIPT}" --force >/dev/null 2>&1; then
     echo "[start-servers] 경고: 루트 index.html 재생성 실패 — 허브 링크가 오래된 상태일 수 있습니다." >&2
   fi
 fi
