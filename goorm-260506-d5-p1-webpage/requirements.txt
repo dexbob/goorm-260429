@@ -3,3 +3,6 @@ numpy>=1.24.0
 matplotlib>=3.7.0
 seaborn>=0.13.0
 nbformat>=5.10.0
+fastapi>=0.112.0
+python-multipart>=0.0.9
+openai>=1.40.0

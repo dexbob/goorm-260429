@@ -3,10 +3,23 @@ import type { AnalysisResult, AnalyzeResponse } from "@/types/analysis";
 const PROJECT_LABEL = "goorm-260506-d5-p1-webpage";
 let cachedBase: string | null = null;
 
+function normalizeBaseUrl(raw: string | undefined): string {
+  const s = (raw ?? "").trim();
+  if (!s) return "";
+  return s.replace(/\/+$/, "");
+}
+
 async function resolveApiBase(): Promise<string> {
   if (cachedBase !== null) return cachedBase;
   if (typeof window === "undefined") {
     cachedBase = "";
+    return cachedBase;
+  }
+
+  // 1) 배포 환경(Vercel 등)에서는 명시적 API 베이스를 최우선 사용
+  const envBase = normalizeBaseUrl(import.meta.env.VITE_API_BASE_URL);
+  if (envBase) {
+    cachedBase = envBase;
     return cachedBase;
   }
 
