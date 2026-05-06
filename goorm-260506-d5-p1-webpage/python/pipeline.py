@@ -246,6 +246,153 @@ def target_vs_categorical(df: pd.DataFrame, target: str, feat: str):
     return [{"name": str(i), "value": float(v)} for i, v in g.items()]
 
 
+def binary_zero_one_counts(
+    df: pd.DataFrame, cols: list[str], top: int | None = None
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for c in cols:
+        s = pd.to_numeric(df[c], errors="coerce").dropna()
+        if s.empty:
+            continue
+        zero = int((s == 0).sum())
+        one = int((s == 1).sum())
+        if zero + one == 0:
+            continue
+        rows.append({"name": str(c), "zeroCount": zero, "oneCount": one})
+    rows.sort(key=lambda r: -(int(r["zeroCount"]) + int(r["oneCount"])))
+    return rows[:top] if top is not None else rows
+
+
+def target_box_by_categorical(
+    df: pd.DataFrame, target: str, feat: str, top: int = 12
+) -> list[dict[str, Any]]:
+    sub = df[[target, feat]].copy()
+    sub[target] = pd.to_numeric(sub[target], errors="coerce")
+    sub[feat] = sub[feat].astype(str)
+    sub = sub.dropna(subset=[target, feat])
+    if sub.empty:
+        return []
+
+    top_levels = (
+        sub[feat].value_counts(dropna=False).head(top).index.tolist()
+    )
+    out: list[dict[str, Any]] = []
+    for lv in top_levels:
+        s = sub.loc[sub[feat] == lv, target]
+        q = quartiles(s)
+        if q["median"] is None:
+            continue
+        out.append(
+            {
+                "feature": str(lv),
+                "min": q["min"],
+                "q1": q["q1"],
+                "median": q["median"],
+                "q3": q["q3"],
+                "max": q["max"],
+            }
+        )
+    return out
+
+
+def categorical_target_signal_score(
+    df: pd.DataFrame,
+    target: str,
+    feat: str,
+    top_levels: int = 20,
+    min_group_rows: int = 12,
+) -> float | None:
+    """
+    범주형 컬럼이 타겟 분산을 얼마나 설명하는지(간이 eta^2 유사 점수) 계산.
+    값이 클수록 타겟 차이를 잘 드러냄.
+    """
+    sub = df[[target, feat]].copy()
+    sub[target] = pd.to_numeric(sub[target], errors="coerce")
+    sub[feat] = sub[feat].astype(str)
+    sub = sub.dropna(subset=[target, feat])
+    if len(sub) < 30:
+        return None
+
+    top_cats = sub[feat].value_counts(dropna=False).head(top_levels)
+    keep = [c for c, n in top_cats.items() if int(n) >= min_group_rows]
+    if len(keep) < 2:
+        return None
+
+    sub = sub[sub[feat].isin(keep)]
+    if len(sub) < 30:
+        return None
+
+    overall = float(sub[target].mean())
+    total_var = float(sub[target].var())
+    if np.isnan(total_var) or total_var <= 1e-12:
+        return None
+
+    g = sub.groupby(feat, observed=True)[target].agg(["mean", "count"])
+    between = float((((g["mean"] - overall) ** 2) * g["count"]).sum() / g["count"].sum())
+    score = between / total_var
+    if np.isnan(score) or not np.isfinite(score):
+        return None
+    return float(score)
+
+
+def target_jitter_trend_by_categorical(
+    df: pd.DataFrame,
+    target: str,
+    feat: str,
+    top_categories: int = 10,
+    point_limit: int = 1400,
+) -> dict[str, Any] | None:
+    """
+    stripplot 느낌:
+    - 카테고리 축에 x jitter 산점
+    - 카테고리별 y 평균을 선으로 연결
+    """
+    sub = df[[target, feat]].copy()
+    sub[target] = pd.to_numeric(sub[target], errors="coerce")
+    sub[feat] = sub[feat].astype(str)
+    sub = sub.dropna(subset=[target, feat])
+    if sub.empty:
+        return None
+
+    top_levels = sub[feat].value_counts(dropna=False).head(top_categories).index.tolist()
+    if len(top_levels) < 2:
+        return None
+
+    sub = sub[sub[feat].isin(top_levels)].copy()
+    if sub.empty:
+        return None
+
+    level_to_idx = {lv: i for i, lv in enumerate(top_levels)}
+    if len(sub) > point_limit:
+        sub = sub.sample(point_limit, random_state=42)
+
+    rng = np.random.default_rng(42)
+    jit = rng.uniform(-0.28, 0.28, size=len(sub))
+    xs = [float(level_to_idx[str(c)]) + float(jit[i]) for i, c in enumerate(sub[feat].tolist())]
+    ys = sub[target].to_numpy(dtype=float)
+    points = [{"x": float(x), "y": float(y)} for x, y in zip(xs, ys)]
+
+    mean_by_cat = (
+        sub.groupby(feat, observed=True)[target]
+        .mean()
+        .dropna()
+    )
+    trend = [
+        {"x": float(level_to_idx[str(cat)]), "y": float(val)}
+        for cat, val in mean_by_cat.items()
+        if str(cat) in level_to_idx
+    ]
+    trend.sort(key=lambda row: row["x"])
+    if len(trend) < 2:
+        return None
+
+    return {
+        "categories": [str(c) for c in top_levels],
+        "points": points,
+        "trend": trend,
+    }
+
+
 def quantile_target_bins(y: pd.Series, q: int = 5) -> pd.Series | None:
     """
     연속형 타겟을 분위수 구간으로 변환.
@@ -399,6 +546,11 @@ def run_pipeline(csv_path: str, target_hint: str | None) -> dict[str, Any]:
 
     low_signal_binary_cols = find_low_signal_binary_columns(df, cat_cols, target)
     filtered_binary_set = set(low_signal_binary_cols)
+    binary_cols_all = [
+        c
+        for c in df.columns
+        if c not in identifier_set and (not target or c != target) and _is_binary_zero_one(df[c])
+    ]
 
     # EDA/시각화용 범주열 목록에서 저신호 이진열 제거
     cat_cols_eda = [c for c in cat_cols if c not in filtered_binary_set]
@@ -549,6 +701,18 @@ def run_pipeline(csv_path: str, target_hint: str | None) -> dict[str, Any]:
             }
         )
 
+    # REF: 0/1 변수 zero/one 구성비 누적 막대
+    binary_count_rows = binary_zero_one_counts(df, binary_cols_all, top=None)
+    if binary_count_rows:
+        charts.append(
+            {
+                "id": "binary-zero-one-stacked",
+                "title": "Binary columns: zero/one counts (REF notebook)",
+                "type": "stackedBar",
+                "data": binary_count_rows,
+            }
+        )
+
     # 상관 히트맵
     if heat["labels"]:
         charts.append(
@@ -599,6 +763,47 @@ def run_pipeline(csv_path: str, target_hint: str | None) -> dict[str, Any]:
                         "data": target_vs_categorical(
                             df.assign(**{target: t_num}), target, col
                         ),
+                    }
+                )
+
+            # REF: 범주형별 타겟 분포(박스 통계) — 표본 수 많은 상위 범주형 열 중심
+            cat_signal_scored: list[tuple[float, str]] = []
+            for col in [c for c in cat_cols if c != target and c in df.columns]:
+                sc = categorical_target_signal_score(df, target, col, top_levels=20, min_group_rows=12)
+                if sc is not None:
+                    cat_signal_scored.append((sc, col))
+            cat_signal_scored.sort(key=lambda t: -t[0])
+            cat_ranked = [c for _, c in cat_signal_scored]
+            if not cat_ranked:
+                cat_ranked = sorted(
+                    [c for c in cat_cols if c != target and c in df.columns],
+                    key=lambda c: int(df[c].astype(str).nunique(dropna=True)),
+                )
+
+            for col in cat_ranked[:6]:
+                box_rows = target_box_by_categorical(df, target, col, top=12)
+                if not box_rows:
+                    continue
+                charts.append(
+                    {
+                        "id": slug_chart_id("target_box_by_cat", col),
+                        "title": f"Target({target}) box by {col} (top categories)",
+                        "type": "boxplot",
+                        "data": box_rows,
+                    }
+                )
+
+            # REF stripplot 느낌: 카테고리별 점 분포 + 평균 추세선
+            for col in cat_ranked[:4]:
+                jit = target_jitter_trend_by_categorical(df, target, col, top_categories=10, point_limit=1400)
+                if not jit:
+                    continue
+                charts.append(
+                    {
+                        "id": slug_chart_id("target_strip_like", col),
+                        "title": f"Target({target}) jitter by {col} (strip-like)",
+                        "type": "catJitterTrend",
+                        "data": jit,
                     }
                 )
 
@@ -669,6 +874,7 @@ def run_pipeline(csv_path: str, target_hint: str | None) -> dict[str, Any]:
             "removedLowSignalBinary": low_signal_binary_cols,
             "removedIdentifierColumns": identifier_cols,
             "notes": meta_notes,
+            "targetSignalCategoricals": cat_ranked[:8] if target else [],
         },
     }
     return result

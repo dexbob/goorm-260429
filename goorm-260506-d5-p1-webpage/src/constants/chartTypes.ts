@@ -3,6 +3,8 @@ import type { ChartType } from "@/types/analysis";
 export const CHART_LABELS: Record<ChartType, string> = {
   histogram: "히스토그램",
   bar: "막대 차트",
+  stackedBar: "누적 막대 차트",
+  catJitterTrend: "카테고리 분포(점+추세)",
   heatmap: "상관 히트맵",
   scatter: "산점도",
   scatterTrend: "회귀 트렌드",

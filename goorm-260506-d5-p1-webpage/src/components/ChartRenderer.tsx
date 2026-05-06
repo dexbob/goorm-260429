@@ -139,15 +139,41 @@ function HeatMap({ data }: { data: { labels: string[]; matrix: number[][] } }) {
   );
 }
 
+function StackedBinaryBarChart({
+  data,
+}: {
+  data: Array<{ name: string; zeroCount: number; oneCount: number }>;
+}) {
+  const rows = data.length;
+  const innerHeight = Math.max(220, rows * 24);
+  return (
+    <div className="h-[340px] overflow-y-auto pr-1">
+      <div style={{ height: innerHeight }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart layout="vertical" data={data} margin={{ left: 24 }}>
+            <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+            <XAxis type="number" tick={{ fontSize: 11 }} />
+            <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 9 }} />
+            <Tooltip />
+            <Bar dataKey="zeroCount" stackId="bin01" fill="hsl(0, 84%, 60%)" radius={[0, 0, 0, 0]} />
+            <Bar dataKey="oneCount" stackId="bin01" fill="hsl(221, 83%, 57%)" radius={[0, 4, 4, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
 function chartContentPaddingClass(chart: ChartBlock) {
   return cn(
     "px-3 pb-4 min-w-0",
     chart.type === "boxplot" && "overflow-x-hidden overflow-y-visible",
-    chart.type !== "boxplot" && chart.type !== "heatmap" && "overflow-auto",
+    chart.type !== "boxplot" && chart.type !== "heatmap" && chart.type !== "stackedBar" && "overflow-auto",
     chart.type === "heatmap" ? "overflow-auto max-h-[260px]" : "",
     chart.type !== "heatmap" &&
       chart.type !== "pairplot" &&
-      chart.type !== "boxplot"
+      chart.type !== "boxplot" &&
+      chart.type !== "stackedBar"
       ? "h-[220px]"
       : chart.type === "pairplot"
         ? "max-h-[280px] overflow-auto"
@@ -184,6 +210,65 @@ function ChartPlots({ chart }: { chart: ChartBlock }) {
               <Bar dataKey="value" fill="hsl(173, 80%, 36%)" radius={[0, 4, 4, 0]} />
             </BarChart>
           </ResponsiveContainer>
+        )}
+
+        {chart.type === "stackedBar" && (
+          <StackedBinaryBarChart
+            data={
+              (chart.data as Array<{ name: string; zeroCount: number; oneCount: number }>) ?? []
+            }
+          />
+        )}
+
+        {chart.type === "catJitterTrend" && (
+          (() => {
+            const payload = chart.data as {
+              categories?: string[];
+              points?: Array<{ x: number; y: number }>;
+              trend?: Array<{ x: number; y: number }>;
+            };
+            const categories = payload?.categories ?? [];
+            const points = payload?.points ?? [];
+            const trend = payload?.trend ?? [];
+            if (!categories.length || !points.length || !trend.length) {
+              return (
+                <p className="text-sm text-muted-foreground">
+                  표시할 점 분포 데이터가 없습니다.
+                </p>
+              );
+            }
+            const tickMap = new Map<number, string>(
+              categories.map((name, idx) => [idx, name]),
+            );
+            return (
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={trend} margin={{ top: 4, right: 8, bottom: 24, left: 8 }}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                  <XAxis
+                    type="number"
+                    dataKey="x"
+                    domain={[-0.5, Math.max(0.5, categories.length - 0.5)]}
+                    ticks={categories.map((_, idx) => idx)}
+                    tick={{ fontSize: 9 }}
+                    tickFormatter={(v) => (tickMap.get(Number(v)) ?? "").slice(0, 10)}
+                    interval={0}
+                  />
+                  <YAxis type="number" dataKey="y" tick={{ fontSize: 11 }} />
+                  <Tooltip />
+                  <Scatter name="samples" data={points} fill="hsl(262, 83%, 58%)" />
+                  <Line
+                    name="mean trend"
+                    type="linear"
+                    dataKey="y"
+                    stroke="hsl(35, 92%, 55%)"
+                    strokeWidth={2}
+                    dot={{ r: 2 }}
+                    isAnimationActive={false}
+                  />
+                </ComposedChart>
+              </ResponsiveContainer>
+            );
+          })()
         )}
 
         {chart.type === "scatter" && (

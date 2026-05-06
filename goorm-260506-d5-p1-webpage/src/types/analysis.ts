@@ -1,6 +1,8 @@
 export type ChartType =
   | "histogram"
   | "bar"
+  | "stackedBar"
+  | "catJitterTrend"
   | "heatmap"
   | "scatter"
   | "scatterTrend"
