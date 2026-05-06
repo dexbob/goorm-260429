@@ -4,28 +4,26 @@
   "type": "module",
   "scripts": {
     "predev": "node scripts/ensure-dev-index.mjs",
-    "dev": "vite",
-    "dev:api": "node --watch server.mjs",
+    "dev": "node scripts/dev-orchestrator.mjs --mode all",
+    "dev:web": "node scripts/dev-orchestrator.mjs --mode web",
+    "dev:api": "node scripts/dev-orchestrator.mjs --mode api",
     "prebuild": "node scripts/ensure-dev-index.mjs",
     "build": "tsc -b && vite build && node scripts/publish-static-hub.mjs",
     "preview": "vite preview",
-    "postinstall": "node scripts/ensure-dev-index.mjs",
-    "start": "node server.mjs"
+    "postinstall": "node scripts/ensure-dev-index.mjs"
   },
   "dependencies": {
-    "busboy": "^1.6.0",
     "@radix-ui/react-slot": "^1.1.2",
     "@tanstack/react-query": "^5.62.8",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "dotenv": "^16.4.7",
-    "openai": "^4.77.0",
     "papaparse": "^5.4.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-markdown": "^9.0.3",
     "react-router-dom": "^7.1.1",
     "recharts": "^2.15.0",
+    "remark-gfm": "^4.0.1",
     "tailwind-merge": "^2.6.0"
   },
   "devDependencies": {

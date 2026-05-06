@@ -3,16 +3,16 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const buildDir = path.join(root, ".build");
-const buildIndex = path.join(buildDir, "index.html");
-const buildAssets = path.join(buildDir, "assets");
+const distDir = path.join(root, "dist");
+const distIndex = path.join(distDir, "index.html");
+const distAssets = path.join(distDir, "assets");
 
-if (!fs.existsSync(buildIndex)) {
-  console.error("[publish-static-hub] .build/index.html 이 없습니다. vite build 를 먼저 실행하세요.");
+if (!fs.existsSync(distIndex)) {
+  console.error("[publish-static-hub] dist/index.html 이 없습니다. vite build 를 먼저 실행하세요.");
   process.exit(1);
 }
-if (!fs.existsSync(buildAssets)) {
-  console.error("[publish-static-hub] .build/assets 가 없습니다.");
+if (!fs.existsSync(distAssets)) {
+  console.error("[publish-static-hub] dist/assets 가 없습니다.");
   process.exit(1);
 }
 
@@ -20,11 +20,11 @@ const outIndex = path.join(root, "index.html");
 const outAssets = path.join(root, "assets");
 
 fs.rmSync(outAssets, { recursive: true, force: true });
-fs.cpSync(buildAssets, outAssets, { recursive: true });
-fs.copyFileSync(buildIndex, outIndex);
+fs.cpSync(distAssets, outAssets, { recursive: true });
+fs.copyFileSync(distIndex, outIndex);
 
 for (const icon of ["favicon.svg", "favicon.ico"]) {
-  const from = path.join(buildDir, icon);
+  const from = path.join(distDir, icon);
   if (fs.existsSync(from)) {
     fs.copyFileSync(from, path.join(root, icon));
   }

@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>데이터 분석 자동화 AI 에이전트 | 개요</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans KR", sans-serif;
+        background: #0f172a;
+        color: #e5e7eb;
+        line-height: 1.65;
+      }
+      .wrap {
+        max-width: 920px;
+        margin: 0 auto;
+        padding: 36px 20px 64px;
+      }
+      h1, h2, h3 { line-height: 1.3; margin: 0 0 12px; color: #f8fafc; }
+      h1 { font-size: 1.8rem; margin-bottom: 16px; }
+      h2 { font-size: 1.25rem; margin-top: 32px; }
+      p, li { font-size: 0.98rem; }
+      code {
+        background: #1e293b;
+        border: 1px solid #334155;
+        border-radius: 6px;
+        padding: 1px 6px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+        font-size: 0.9em;
+      }
+      pre {
+        overflow-x: auto;
+        padding: 12px;
+        border-radius: 8px;
+        border: 1px solid #334155;
+        background: #111827;
+      }
+      a { color: #7dd3fc; text-decoration: none; }
+      a:hover { text-decoration: underline; }
+      .top-links {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-bottom: 14px;
+      }
+      .btn {
+        display: inline-block;
+        padding: 8px 12px;
+        border-radius: 8px;
+        border: 1px solid #334155;
+        background: #1e293b;
+        color: #e2e8f0;
+      }
+      ul { padding-left: 20px; }
+      .note {
+        margin-top: 14px;
+        padding: 10px 12px;
+        border: 1px solid #334155;
+        border-radius: 8px;
+        background: #111827;
+        color: #cbd5e1;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <div class="top-links">
+        <a class="btn" href="./">페이지 열기</a>
+        <a class="btn" href="../">루트로 이동</a>
+      </div>
+
+      <h1>데이터 분석 자동화 AI 에이전트</h1>
+      <p>
+        CSV 파일을 업로드하면 자동으로 EDA/시각화/인사이트를 생성하는 React + FastAPI 프로젝트입니다.
+      </p>
+
+      <h2>핵심 구성</h2>
+      <ul>
+        <li>프론트엔드: Vite + React</li>
+        <li>API: FastAPI (<code>api/index.py</code>)</li>
+        <li>분석 파이프라인: <code>python/pipeline.py</code></li>
+        <li>노트북 생성: <code>python/build_notebook.py</code></li>
+      </ul>
+
+      <h2>로컬 실행</h2>
+      <p>포트 자동 탐색 오케스트레이터를 사용합니다.</p>
+      <pre><code>npm run dev</code></pre>
+      <ul>
+        <li>API(uvicorn)와 프론트(Vite)를 동시에 실행</li>
+        <li>사용 포트는 <code>.runtime-ports.json</code>로 공유</li>
+      </ul>
+
+      <h2>Vercel 배포</h2>
+      <ul>
+        <li>Root Directory: <code>goorm-260506-d5-p1-webpage</code></li>
+        <li>Build Command: <code>npm run build</code></li>
+        <li>Install Command: <code>npm ci</code></li>
+        <li>Output Directory: <code>dist</code></li>
+      </ul>
+
+      <p class="note">
+        API는 same-origin <code>/api/*</code>를 사용합니다.
+        외부 백엔드를 따로 붙일 때만 <code>VITE_API_BASE_URL</code>을 지정하세요.
+      </p>
+    </main>
+  </body>
+</html>

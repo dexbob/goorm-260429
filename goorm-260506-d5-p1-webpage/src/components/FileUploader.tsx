@@ -71,9 +71,9 @@ export function FileUploader({ file, onFile, disabled }: FileUploaderProps) {
           onChange={(e) => pick(e.target.files?.[0] ?? null)}
         />
         <p className="text-sm font-medium text-foreground">
-          CSV 파일을 드래그하거나 클릭하여 선택
+          데이터(CSV) 파일을 드래그하거나 클릭하여 선택
         </p>
-        <p className="mt-2 text-xs text-muted-foreground">UTF-8 인코딩, 최대 10MB</p>
+        <p className="mt-2 text-xs text-muted-foreground">UTF-8, 최대 10MB</p>
         {file && (
           <p className="mt-4 text-sm text-primary">
             선택됨: <span className="font-mono">{file.name}</span> (

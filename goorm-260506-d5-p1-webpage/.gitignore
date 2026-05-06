@@ -1,7 +1,7 @@
 node_modules
-.build
 .env
 .venv
 dist
+.runtime-ports.json
 *.local
 .DS_Store

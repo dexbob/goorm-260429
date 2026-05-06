@@ -1,19 +1,27 @@
 from __future__ import annotations
 
 import base64
+import asyncio
 import json
 import os
 import tempfile
+import time
+from pathlib import Path
 from typing import Any, AsyncGenerator
 
 import nbformat
-from fastapi import FastAPI, File, Form, UploadFile
+from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from openai import OpenAI
+from dotenv import load_dotenv
 
 from python.build_notebook import build_nb
 from python.pipeline import run_pipeline
+
+# 프로젝트 루트 .env 로드 (로컬 uvicorn 실행 시 필수)
+ROOT_DIR = Path(__file__).resolve().parents[1]
+load_dotenv(ROOT_DIR / ".env")
 
 app = FastAPI(title="d5-p1 API", version="1.0.0")
 app.add_middleware(
@@ -22,6 +30,26 @@ app.add_middleware(
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def request_logger(request: Request, call_next):
+    start = time.time()
+    try:
+        response = await call_next(request)
+    except Exception as e:
+        elapsed_ms = int((time.time() - start) * 1000)
+        print(
+            f"[api] {request.method} {request.url.path} -> 500 ({elapsed_ms}ms) error={e}",
+            flush=True,
+        )
+        raise
+    elapsed_ms = int((time.time() - start) * 1000)
+    print(
+        f"[api] {request.method} {request.url.path} -> {response.status_code} ({elapsed_ms}ms)",
+        flush=True,
+    )
+    return response
 
 
 def _create_llm() -> tuple[OpenAI, str, str] | None:
@@ -38,7 +66,7 @@ def _create_llm() -> tuple[OpenAI, str, str] | None:
                 "X-Title": title,
             },
         )
-        model = (os.getenv("OPENROUTER_MODEL") or "google/gemma-2-9b-it:free").strip()
+        model = (os.getenv("OPENROUTER_MODEL") or "openrouter/free").strip()
         return client, model, "openrouter"
 
     oa_key = (os.getenv("OPENAI_API_KEY") or "").strip()
@@ -137,19 +165,16 @@ async def analyze(file: UploadFile = File(...), target: str | None = Form(defaul
 
 @app.post("/api/insights/stream")
 async def insights_stream(payload: dict[str, Any]):
-    llm = _create_llm()
-    if not llm:
-        return JSONResponse(
-            {"error": "OPENROUTER_API_KEY 또는 OPENAI_API_KEY 가 설정되지 않았습니다."},
-            status_code=503,
-        )
-
     analysis = payload.get("analysis")
     if not isinstance(analysis, dict):
         return JSONResponse({"error": "Missing analysis"}, status_code=400)
 
-    client, model, _provider = llm
     compact = _compact_analysis_for_llm(analysis)
+    llm = _create_llm()
+    if llm:
+        client, model, provider = llm
+    else:
+        client, model, provider = None, "", ""
     sys = (
         "당신은 데이터 과학자입니다. 사용자 데이터 분석 요약 JSON만 보고 한국어로 "
         "실무 인사이트를 작성합니다. 추측은 명시하고, 수치는 요약에서만 인용합니다."
@@ -165,22 +190,63 @@ async def insights_stream(payload: dict[str, Any]):
     )
 
     async def sse() -> AsyncGenerator[bytes, None]:
-        try:
-            stream = client.chat.completions.create(
-                model=model,
-                stream=True,
-                messages=[
-                    {"role": "system", "content": sys},
-                    {"role": "user", "content": user},
-                ],
+        if not llm:
+            yield f"data: {json.dumps({'error': '인사이트 분석에 실패했습니다.'}, ensure_ascii=False)}\n\n".encode(
+                "utf-8"
             )
-            for part in stream:
-                text = part.choices[0].delta.content if part.choices else ""
-                if text:
-                    yield f"data: {json.dumps({'text': text}, ensure_ascii=False)}\n\n".encode("utf-8")
-            yield b"data: [DONE]\n\n"
-        except Exception as e:
-            yield f"data: {json.dumps({'error': str(e)}, ensure_ascii=False)}\n\n".encode("utf-8")
+            return
+
+        is_openrouter_free = provider == "openrouter" and model.lower() in {
+            "openrouter/free",
+            "free",
+        }
+        candidate_models = (
+            [
+                "openrouter/free",
+                "google/gemma-2-9b-it:free",
+                "mistralai/mistral-7b-instruct:free",
+            ]
+            if is_openrouter_free
+            else [model]
+        )
+        max_attempts = min(3, len(candidate_models))
+        last_error: Exception | None = None
+
+        for attempt in range(1, max_attempts + 1):
+            selected_model = candidate_models[attempt - 1]
+            try:
+                stream = client.chat.completions.create(
+                    model=selected_model,
+                    stream=True,
+                    messages=[
+                        {"role": "system", "content": sys},
+                        {"role": "user", "content": user},
+                    ],
+                )
+                emitted = False
+                for part in stream:
+                    text = part.choices[0].delta.content if part.choices else ""
+                    if text:
+                        emitted = True
+                        yield f"data: {json.dumps({'text': text}, ensure_ascii=False)}\n\n".encode("utf-8")
+                if not emitted:
+                    raise RuntimeError("LLM 응답이 비어 있습니다.")
+                yield b"data: [DONE]\n\n"
+                return
+            except Exception as e:
+                last_error = e
+                print(
+                    f"[insights] LLM attempt {attempt}/{max_attempts} failed model={selected_model}: {e}",
+                    flush=True,
+                )
+                if attempt < max_attempts:
+                    backoff_sec = attempt * 1.5
+                    await asyncio.sleep(backoff_sec)
+
+        print(f"[insights] final failure: {last_error}", flush=True)
+        yield f"data: {json.dumps({'error': '인사이트 분석에 실패했습니다.'}, ensure_ascii=False)}\n\n".encode(
+            "utf-8"
+        )
 
     return StreamingResponse(
         sse(),

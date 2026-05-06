@@ -1,6 +1,5 @@
 import type { AnalysisResult, AnalyzeResponse } from "@/types/analysis";
 
-const PROJECT_LABEL = "goorm-260506-d5-p1-webpage";
 let cachedBase: string | null = null;
 
 function normalizeBaseUrl(raw: string | undefined): string {
@@ -23,47 +22,44 @@ async function resolveApiBase(): Promise<string> {
     return cachedBase;
   }
 
+  // 2) 로컬 정적 허브(5000대)로 열었을 때는 FastAPI 기본 포트(8793)로 우회
+  //    그렇지 않으면 same-origin(/api)로 두어 Vercel/배포에서 정상 동작.
   const { protocol, hostname, port } = window.location;
-
-  // Node 서버 포트(302x 등)로 직접 열었으면 same-origin API 사용
-  if (port && Number(port) >= 3000 && Number(port) < 4000) {
-    cachedBase = "";
+  const p = Number(port || "0");
+  // 정적 허브(기본 5000대)에서 열렸다면 호스트 종류(localhost, Tailscale IP 등)와 무관하게
+  // API 서버 기본 포트 8793으로 우회한다.
+  if (Number.isFinite(p) && p >= 5000 && p < 6000) {
+    cachedBase = `${protocol}//${hostname}:8793`;
     return cachedBase;
   }
 
-  // 정적 허브(기본 5000대)에서는 hub-dev-ports.json 기준으로 Node API 포트 우회
-  try {
-    const res = await fetch("/hub-dev-ports.json", { cache: "no-store" });
-    if (res.ok) {
-      const map = (await res.json()) as Record<string, number>;
-      const nodePort = map[PROJECT_LABEL];
-      if (nodePort && Number.isFinite(nodePort)) {
-        cachedBase = `${protocol}//${hostname}:${nodePort}`;
-        return cachedBase;
-      }
-    }
-  } catch {
-    // ignore
-  }
-
+  // 기본은 same-origin(/api). Vercel 단일 배포(FastAPI)에서 사용.
   cachedBase = "";
   return cachedBase;
 }
 
 export async function postAnalyze(file: File, target?: string): Promise<AnalyzeResponse> {
   const base = await resolveApiBase();
+  const requestUrl = `${base}/api/analyze`;
   const body = new FormData();
   body.append("file", file);
   if (target?.trim()) body.append("target", target.trim());
 
-  const res = await fetch(`${base}/api/analyze`, {
-    method: "POST",
-    body,
-  });
+  let res: Response;
+  try {
+    res = await fetch(requestUrl, {
+      method: "POST",
+      body,
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("[analyze] network error", { requestUrl, message: msg });
+    throw new Error("분석 API 연결 실패");
+  }
 
   if (!res.ok) {
     const err = (await res.json().catch(() => ({}))) as { error?: string };
-    throw new Error(err.error || `분석 실패 (${res.status})`);
+    throw new Error(err.error || `분석 실패 (${res.status}) @ ${requestUrl}`);
   }
 
   return res.json() as Promise<AnalyzeResponse>;
@@ -75,14 +71,24 @@ export async function streamInsights(
   onError?: (e: string) => void,
 ): Promise<void> {
   const base = await resolveApiBase();
-  const res = await fetch(`${base}/api/insights/stream`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json; charset=utf-8" },
-    body: JSON.stringify({ analysis }),
-  });
+  const requestUrl = `${base}/api/insights/stream`;
+  let res: Response;
+  try {
+    res = await fetch(requestUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+      body: JSON.stringify({ analysis }),
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("[insights] network error", { requestUrl, message: msg });
+    onError?.("인사이트 API 연결 실패");
+    return;
+  }
 
   if (!res.ok || !res.body) {
-    onError?.(`인사이트 API 오류 (${res.status})`);
+    console.error("[insights] http error", { requestUrl, status: res.status });
+    onError?.("인사이트 분석에 실패했습니다.");
     return;
   }
 
@@ -104,7 +110,8 @@ export async function streamInsights(
       try {
         const j = JSON.parse(payload) as { text?: string; error?: string };
         if (j.error) {
-          onError?.(j.error);
+          console.error("[insights] stream error payload", { requestUrl, error: j.error });
+          onError?.("인사이트 분석에 실패했습니다.");
           return;
         }
         if (j.text) onToken(j.text);

@@ -11,6 +11,10 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 STATIC_PORT_START="${STATIC_PORT:-5000}"
 # 각 Node 앱 포트 후보 시작값 (비어 있는 포트를 순서대로 찾음)
 NODE_PORT_SCAN_START="${NODE_PORT_SCAN_START:-3020}"
+# d5-p1 FastAPI 로컬 API 자동 기동(1: 켬, 0: 끔)
+ENABLE_D5_API="${ENABLE_D5_API:-1}"
+# start-servers 통합 실행에서는 종료 안정성을 위해 기본적으로 reload를 끈다.
+D5_API_RELOAD="${D5_API_RELOAD:-0}"
 
 # 탐색에서 제외 (generate-root-index.js 와 비슷한 기준)
 IGNORE_DIR_NAMES=(
@@ -29,7 +33,6 @@ PINNED_STATIC_DIRS=(
 # (기본 규칙은 .build/index.html 이 있으면 빌드를 생략하므로, 수정 사항이 npm start(Node) 에 안 붙을 수 있음.)
 PINNED_VITE_ALWAYS_BUILD=(
   "goorm-260504-d4-p2-webpage"
-  "goorm-260506-d5-p1-webpage"
 )
 
 if ! command -v python3 >/dev/null 2>&1; then
@@ -47,7 +50,9 @@ if ! command -v node >/dev/null 2>&1; then
   exit 1
 fi
 
-# goorm-260506-d5-p1-webpage: npm install, Python venv + requirements, .env 를 한 번에 맞춤 (OpenRouter 등)
+# goorm-260506-d5-p1-webpage: FastAPI 서버리스(uvicorn) 전환 이후에는
+# start-servers.sh 에서 별도 준비 작업을 수행하지 않는다.
+# (필요 시 해당 프로젝트 디렉터리에서 npm run dev / npm run dev:api 를 직접 사용)
 prepare_goorm_260506_d5_p1() {
   local d="${ROOT_DIR}/goorm-260506-d5-p1-webpage"
   [[ -d "${d}" ]] || return 0
@@ -94,7 +99,7 @@ prepare_goorm_260506_d5_p1() {
   fi
 }
 
-prepare_goorm_260506_d5_p1
+# prepare_goorm_260506_d5_p1
 
 GENERATE_ROOT_INDEX_SCRIPT="${ROOT_DIR}/scripts/generate-root-index.js"
 
@@ -362,26 +367,71 @@ choose_app_port_for_dir() {
 }
 
 STATIC_PID=""
+API_PIDS=()
 declare -a NODE_PIDS=()
+SHUTTING_DOWN=0
 
 HUB_DEV_PORTS_FILE="${ROOT_DIR}/hub-dev-ports.json"
+HUB_PID_FILE="${ROOT_DIR}/.start-servers.pids"
+
+write_runtime_pid_file() {
+  local tmp="${HUB_PID_FILE}.tmp"
+  {
+    printf '%s\n' "$$"
+    [[ -n "${STATIC_PID:-}" ]] && printf '%s\n' "${STATIC_PID}"
+    local pid
+    for pid in "${API_PIDS[@]:-}"; do
+      [[ -n "${pid}" ]] && printf '%s\n' "${pid}"
+    done
+    for pid in "${NODE_PIDS[@]:-}"; do
+      [[ -n "${pid}" ]] && printf '%s\n' "${pid}"
+    done
+  } >"${tmp}"
+  mv -f "${tmp}" "${HUB_PID_FILE}"
+}
+
+signal_pid_or_group() {
+  local sig="$1"
+  local pid="$2"
+  [[ -n "${pid}" ]] || return 0
+  if ! kill -0 "${pid}" >/dev/null 2>&1; then
+    return 0
+  fi
+  # 가능하면 프로세스 그룹 전체에 신호 전달(uvicorn --reload 하위 프로세스 정리)
+  kill "-${sig}" "--" "-${pid}" >/dev/null 2>&1 || kill "-${sig}" "${pid}" >/dev/null 2>&1 || true
+}
 
 cleanup() {
+  if (( SHUTTING_DOWN == 1 )); then
+    return 0
+  fi
+  SHUTTING_DOWN=1
+
   local pid
-  for pid in "${NODE_PIDS[@]:-}"; do
-    if [[ -n "${pid}" ]] && kill -0 "${pid}" >/dev/null 2>&1; then
-      kill "${pid}" >/dev/null 2>&1 || true
-    fi
+  for pid in "${API_PIDS[@]:-}"; do
+    signal_pid_or_group "TERM" "${pid}"
   done
 
+  for pid in "${NODE_PIDS[@]:-}"; do
+    signal_pid_or_group "TERM" "${pid}"
+  done
+
+  signal_pid_or_group "TERM" "${STATIC_PID:-}"
+
+  # 강제 종료 보강(짧은 유예 후)
+  (
+    sleep 0.8
+    for pid in "${API_PIDS[@]:-}"; do signal_pid_or_group "KILL" "${pid}"; done
+    for pid in "${NODE_PIDS[@]:-}"; do signal_pid_or_group "KILL" "${pid}"; done
+    signal_pid_or_group "KILL" "${STATIC_PID:-}"
+  ) >/dev/null 2>&1 &
+
+  API_PIDS=()
   NODE_PIDS=()
-
-  if [[ -n "${STATIC_PID:-}" ]] && kill -0 "${STATIC_PID}" >/dev/null 2>&1; then
-    kill "${STATIC_PID}" >/dev/null 2>&1 || true
-
-  fi
+  STATIC_PID=""
 
   rm -f "${HUB_DEV_PORTS_FILE}" "${HUB_DEV_PORTS_FILE}.tmp" 2>/dev/null || true
+  rm -f "${HUB_PID_FILE}" "${HUB_PID_FILE}.tmp" 2>/dev/null || true
 }
 
 write_hub_dev_ports_json() {
@@ -397,7 +447,29 @@ write_hub_dev_ports_json() {
   mv -f "${tmp}" "${HUB_DEV_PORTS_FILE}"
 }
 
-trap cleanup EXIT INT TERM HUP
+on_interrupt() {
+  cleanup
+  exit 130
+}
+
+on_term() {
+  cleanup
+  exit 143
+}
+
+block_until_interrupt() {
+  # wait(전체 자식 대기)는 Ctrl+C가 자식에 먼저 전달되면 즉시 복귀하지 않는 경우가 있어,
+  # 단순 sleep 루프로 대기하고 종료는 trap(cleanup)에서 일괄 처리한다.
+  while true; do
+    sleep 3600
+  done
+}
+
+trap cleanup EXIT
+trap on_interrupt INT
+trap on_term TERM HUP
+
+write_runtime_pid_file
 
 STATIC_PORT="$(pick_free_static_port)" || STATIC_PORT=""
 if [[ -z "${STATIC_PORT}" ]]; then
@@ -437,6 +509,7 @@ fi
 echo "[1] 정적 허브: http://localhost:${STATIC_PORT}  (${ROOT_DIR})" >&2
 python3 -m http.server "${STATIC_PORT}" --directory "${ROOT_DIR}" &
 STATIC_PID=$!
+write_runtime_pid_file
 
 for _ in {1..50}; do
   if ! kill -0 "${STATIC_PID}" 2>/dev/null; then
@@ -457,6 +530,24 @@ fi
 
 ensure_vite_projects_for_static_hub
 
+# d5-p1 FastAPI API를 허브와 함께 자동 기동 (ENABLE_D5_API=0으로 비활성화 가능)
+if [[ "${ENABLE_D5_API}" != "0" ]]; then
+  D5_DIR="${ROOT_DIR}/goorm-260506-d5-p1-webpage"
+  if [[ -d "${D5_DIR}" && -f "${D5_DIR}/package.json" ]]; then
+    echo "[api] goorm-260506-d5-p1-webpage FastAPI 기동 시도 (direct uvicorn)" >&2
+    (
+      cd "${D5_DIR}"
+      if [[ "${D5_API_RELOAD}" == "1" ]]; then
+        exec python3 -m uvicorn api.index:app --host 0.0.0.0 --port 8793 --reload
+      else
+        exec python3 -m uvicorn api.index:app --host 0.0.0.0 --port 8793
+      fi
+    ) &
+    API_PIDS+=($!)
+    write_runtime_pid_file
+  fi
+fi
+
 if [[ -f "${GENERATE_ROOT_INDEX_SCRIPT}" ]]; then
   if ! node "${GENERATE_ROOT_INDEX_SCRIPT}" --force >/dev/null 2>&1; then
     echo "[start-servers] 경고: 루트 index.html 재생성 실패 — 허브 링크가 오래된 상태일 수 있습니다." >&2
@@ -468,7 +559,7 @@ if (( ${#APP_DIRS[@]} == 0 )); then
 
   echo "[종료] Ctrl+C" >&2
 
-  wait "${STATIC_PID}" || true
+  block_until_interrupt
 
   exit 0
 fi
@@ -489,6 +580,7 @@ for ((i = 0; i < ${#APP_DIRS[@]}; i++)); do
   ) &
 
   NODE_PIDS+=($!)
+  write_runtime_pid_file
   sleep 0.15
 
 done
@@ -518,4 +610,4 @@ echo "---"
 echo "[안내] 위 Node 앱 목록 종료 포함 전체 종료 → 이 창에서 Ctrl+C"
 echo ""
 
-wait || true
+block_until_interrupt

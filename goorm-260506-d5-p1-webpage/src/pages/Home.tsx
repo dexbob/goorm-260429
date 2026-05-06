@@ -2,14 +2,12 @@ import { useState } from "react";
 import { AnalysisResultPanels } from "@/components/AnalysisResultPanels";
 import { FileUploader } from "@/components/FileUploader";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { useAnalyzeCsv } from "@/hooks/useUploadCSV";
 import type { AnalyzeResponse } from "@/types/analysis";
-import { previewCsvFile } from "@/utils/parser";
 
 export function Home() {
   const [file, setFile] = useState<File | null>(null);
-  const [previewCols, setPreviewCols] = useState<string[]>([]);
   const [result, setResult] = useState<AnalyzeResponse | null>(null);
 
   const mut = useAnalyzeCsv();
@@ -40,38 +38,28 @@ export function Home() {
       </header>
 
       <Card className="max-w-3xl mx-auto">
-        <CardHeader>
-          <CardDescription>UTF-8, 최대 10MB. 드래그 앤 드롭 지원.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
+        <CardContent className="space-y-6 pt-6">
           <FileUploader
             file={file}
             onFile={(f) => {
               setFile(f);
-              setPreviewCols([]);
-              if (f) previewCsvFile(f, (p) => setPreviewCols(p.fields));
             }}
             disabled={mut.isPending}
           />
 
-          {previewCols.length > 0 && (
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <Button
+              className="w-full sm:w-auto"
+              size="lg"
+              disabled={!file || mut.isPending}
+              onClick={onAnalyze}
+            >
+              {mut.isPending ? "분석 중…" : "분석 시작"}
+            </Button>
             <p className="text-xs text-muted-foreground">
-              미리보기 컬럼: {previewCols.slice(0, 24).join(", ")}
-              {previewCols.length > 24 ? " …" : ""}
+              타겟 컬럼은 <code>y</code>, <code>target</code>, <code>label</code> 이름을 기준으로 자동 감지됩니다.
             </p>
-          )}
-          <p className="text-xs text-muted-foreground">
-            타겟 컬럼은 <code>y</code>, <code>target</code>, <code>label</code> 이름을 기준으로 자동 감지됩니다.
-          </p>
-
-          <Button
-            className="w-full sm:w-auto"
-            size="lg"
-            disabled={!file || mut.isPending}
-            onClick={onAnalyze}
-          >
-            {mut.isPending ? "분석 중…" : "분석 시작"}
-          </Button>
+          </div>
           {mut.isError && (
             <p className="text-sm text-red-600">
               {(mut.error as Error)?.message ?? "오류가 발생했습니다."}

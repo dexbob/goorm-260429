@@ -84,6 +84,28 @@ def detect_target(df: pd.DataFrame, override: str | None) -> str | None:
     return None
 
 
+def detect_identifier_columns(df: pd.DataFrame, target: str | None) -> list[str]:
+    """
+    분석에서 제외할 ID 성격 컬럼 추정:
+    - 이름 패턴(id, *_id, uuid, identifier 등)
+    - 거의 유일값(행 수 대비 고유값 비율이 매우 높음)
+    """
+    out: list[str] = []
+    n = max(1, len(df))
+    name_pat = re.compile(r"(^id$|(^|_)id($|_)|uuid|identifier|index$)", re.IGNORECASE)
+    for c in df.columns:
+        if target and c == target:
+            continue
+        s = df[c]
+        nunique = int(s.nunique(dropna=True))
+        uniq_ratio = nunique / n
+        by_name = bool(name_pat.search(str(c)))
+        by_uniqueness = nunique >= 50 and uniq_ratio >= 0.98
+        if by_name or by_uniqueness:
+            out.append(c)
+    return out
+
+
 def build_histogram_series(series: pd.Series, bins: int = 30) -> list[dict[str, Any]]:
     series = pd.to_numeric(series, errors="coerce").dropna()
     if series.empty:
@@ -224,6 +246,73 @@ def target_vs_categorical(df: pd.DataFrame, target: str, feat: str):
     return [{"name": str(i), "value": float(v)} for i, v in g.items()]
 
 
+def quantile_target_bins(y: pd.Series, q: int = 5) -> pd.Series | None:
+    """
+    연속형 타겟을 분위수 구간으로 변환.
+    - 중복 경계가 많을 때는 qcut의 duplicates='drop'으로 자동 축소.
+    """
+    s = pd.to_numeric(y, errors="coerce")
+    if s.notna().sum() < 20:
+        return None
+    try:
+        binned = pd.qcut(s, q=min(q, 10), duplicates="drop")
+    except Exception:
+        return None
+    if binned is None:
+        return None
+    cat = binned.astype(str)
+    if int(cat.nunique(dropna=True)) < 2:
+        return None
+    return cat
+
+
+def _is_binary_zero_one(series: pd.Series) -> bool:
+    s_num = pd.to_numeric(series, errors="coerce")
+    valid = s_num.dropna()
+    if valid.empty:
+        return False
+    uniq = set(valid.unique().tolist())
+    return uniq.issubset({0.0, 1.0}) and len(uniq) >= 1
+
+
+def find_low_signal_binary_columns(
+    df: pd.DataFrame,
+    cat_cols: list[str],
+    target: str | None,
+    corr_threshold: float = 0.02,
+    min_non_na: int = 30,
+) -> list[str]:
+    """
+    0/1 이진 열 중 타겟(수치형)과의 상관(|r|)이 매우 낮은 열을 EDA에서 제외.
+    - 원본 데이터는 유지하고, 분석 뷰/시각화 입력만 정제한다.
+    """
+    if not target or target not in df.columns:
+        return []
+    t_num = pd.to_numeric(df[target], errors="coerce")
+    if t_num.notna().sum() < min_non_na:
+        return []
+
+    dropped: list[str] = []
+    for c in cat_cols:
+        if c == target:
+            continue
+        s = df[c]
+        if not _is_binary_zero_one(s):
+            continue
+        x = pd.to_numeric(s, errors="coerce")
+        pair = pd.DataFrame({"x": x, "y": t_num}).dropna()
+        if len(pair) < min_non_na:
+            continue
+        if pair["x"].nunique(dropna=True) < 2:
+            # 사실상 상수열은 정보량이 낮으므로 제외
+            dropped.append(c)
+            continue
+        r = float(pair["x"].corr(pair["y"]))
+        if np.isnan(r) or abs(r) <= corr_threshold:
+            dropped.append(c)
+    return dropped
+
+
 def pairplot_points(df: pd.DataFrame, cols: list[str], limit: int = 400):
     if len(cols) < 2:
         return []
@@ -299,8 +388,35 @@ def run_pipeline(csv_path: str, target_hint: str | None) -> dict[str, Any]:
         df = df.sample(MAX_ROWS, random_state=42).reset_index(drop=True)
         sampled = True
 
-    num_cols, cat_cols = classify_columns(df)
+    num_cols_raw, cat_cols_raw = classify_columns(df)
     target = detect_target(df, target_hint)
+    identifier_cols = detect_identifier_columns(df, target)
+    identifier_set = set(identifier_cols)
+
+    # ID 성격 컬럼은 EDA/시각화에서 제외 (원본/요약 정보는 유지)
+    num_cols = [c for c in num_cols_raw if c not in identifier_set]
+    cat_cols = [c for c in cat_cols_raw if c not in identifier_set]
+
+    low_signal_binary_cols = find_low_signal_binary_columns(df, cat_cols, target)
+    filtered_binary_set = set(low_signal_binary_cols)
+
+    # EDA/시각화용 범주열 목록에서 저신호 이진열 제거
+    cat_cols_eda = [c for c in cat_cols if c not in filtered_binary_set]
+
+    df_eda = df.copy()
+    eda_cat_cols = list(cat_cols_eda)
+    target_bin_col: str | None = None
+
+    # 범주형 피처가 많은 데이터에서 연속형 타겟 해석을 보강하기 위해 분위수 구간화 보조 변수 추가.
+    if target and target in df_eda.columns:
+        t_num = pd.to_numeric(df_eda[target], errors="coerce")
+        if t_num.notna().sum() >= 20:
+            binned = quantile_target_bins(t_num, q=5)
+            if binned is not None:
+                target_bin_col = f"{target}__bin_q"
+                df_eda[target_bin_col] = binned
+                if target_bin_col not in eda_cat_cols:
+                    eda_cat_cols.append(target_bin_col)
 
     missing_pct = {
         str(c): round(100.0 * df[c].isna().mean(), 2) for c in df.columns
@@ -313,10 +429,10 @@ def run_pipeline(csv_path: str, target_hint: str | None) -> dict[str, Any]:
         numeric_describe[c] = _safe_json(s.describe().to_dict())
 
     categorical_freq: dict[str, list[dict[str, Any]]] = {}
-    for c in cat_cols:
-        categorical_freq[c] = categorical_top(df, c, top=28)
+    for c in eda_cat_cols:
+        categorical_freq[c] = categorical_top(df_eda, c, top=28)
 
-    column_inventory = build_column_inventory(df, num_cols, cat_cols)
+    column_inventory = build_column_inventory(df, num_cols_raw, cat_cols_raw)
 
     corr_mat = pd.DataFrame()
     numeric_df = pd.DataFrame()
@@ -333,6 +449,22 @@ def run_pipeline(csv_path: str, target_hint: str | None) -> dict[str, Any]:
         (
             "상관 히트맵에는 열이 많으면 타겟과 높은 |표본 상관| 열 우선 포함(최대 52열)합니다."
             if len(num_cols) > 52
+            else ""
+        ),
+        (
+            f"연속형 타겟 `{target}`을 분위수 구간 `{target_bin_col}`로 보조 생성해 범주형 EDA에 포함했습니다."
+            if target_bin_col
+            else ""
+        ),
+        (
+            "0/1 이진 컬럼 중 타겟과 |상관|이 매우 낮은 컬럼을 EDA/시각화에서 제외했습니다: "
+            f"{len(low_signal_binary_cols)}개"
+            if low_signal_binary_cols
+            else ""
+        ),
+        (
+            f"ID 성격 컬럼은 분석에서 제외했습니다: {len(identifier_cols)}개"
+            if identifier_cols
             else ""
         ),
     ]
@@ -407,13 +539,13 @@ def run_pipeline(csv_path: str, target_hint: str | None) -> dict[str, Any]:
             )
 
     # 각 범주형 빈도 막대
-    for col in cat_cols:
+    for col in eda_cat_cols:
         charts.append(
             {
                 "id": slug_chart_id("bar_freq", col),
                 "title": f"Bar chart: {col}",
                 "type": "bar",
-                "data": categorical_top(df, col, top=28),
+                "data": categorical_top(df_eda, col, top=28),
             }
         )
 
@@ -534,6 +666,8 @@ def run_pipeline(csv_path: str, target_hint: str | None) -> dict[str, Any]:
             "style": "pandas + seaborn (Mercedes exploration pattern)",
             "heatmapColumns": len(heat_labels),
             "chartCount": len(charts),
+            "removedLowSignalBinary": low_signal_binary_cols,
+            "removedIdentifierColumns": identifier_cols,
             "notes": meta_notes,
         },
     }
