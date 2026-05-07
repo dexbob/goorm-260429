@@ -127,6 +127,20 @@ function parseReadmeFirstHeading(readmePath) {
   return line.replace(/^#\s+/, "").trim() || null;
 }
 
+function parseReadmeHtmlFirstHeading(readmeHtmlPath) {
+  if (!fs.existsSync(readmeHtmlPath)) return null;
+  let raw;
+  try {
+    raw = fs.readFileSync(readmeHtmlPath, "utf8");
+  } catch {
+    return null;
+  }
+  const h1Match = raw.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
+  if (!h1Match) return null;
+  const text = decodeBasicHtmlEntities(stripHtmlTags(h1Match[1]).replace(/\s+/g, " ").trim());
+  return text || null;
+}
+
 const OVERVIEW_SECTION_RE = /^##\s+(개요|프로젝트 개요)\s*$/;
 
 /** `## 개요` 등에서 첫 불릿 한 줄만 (도입문이 없을 때 대체용). */
@@ -289,10 +303,12 @@ function hasExerciseEntryHtml(dirname) {
 function getCardTitleAndDescription(dirname) {
   const indexPath = resolveExerciseIndexHtmlPath(dirname);
   const readmePath = path.join(ROOT_DIR, dirname, "README.md");
+  const readmeHtmlPath = path.join(ROOT_DIR, dirname, "README.html");
 
   const title =
     extractWebTitleFromIndex(indexPath) ||
     parseReadmeFirstHeading(readmePath) ||
+    parseReadmeHtmlFirstHeading(readmeHtmlPath) ||
     formatExerciseTitle(dirname);
 
   let description = buildDescription(dirname);
@@ -329,7 +345,11 @@ function formatGeneratedAtKst(date = new Date()) {
 function hasExpressBackend(dirname) {
   const dir = path.join(ROOT_DIR, dirname);
   const hasServer =
-    fs.existsSync(path.join(dir, "server.js")) || fs.existsSync(path.join(dir, "server.mjs"));
+    fs.existsSync(path.join(dir, "server.js")) ||
+    fs.existsSync(path.join(dir, "server.mjs")) ||
+    fs.existsSync(path.join(dir, "server", "index.ts")) ||
+    fs.existsSync(path.join(dir, "server", "index.js")) ||
+    fs.existsSync(path.join(dir, "server", "index.mjs"));
   if (!hasServer) return false;
   const pkgPath = path.join(dir, "package.json");
   if (!fs.existsSync(pkgPath)) return false;
@@ -433,6 +453,10 @@ function shouldSkipRegeneration(fingerprint) {
   }
 }
 
+function renderHubNodePortsScript() {
+  return "";
+}
+
 function renderExerciseCard(dirname) {
   const { title, description } = getCardTitleAndDescription(dirname);
   const href = `./${dirname}/`;
@@ -441,6 +465,8 @@ function renderExerciseCard(dirname) {
   const readmeHref = `./${dirname}/README.html`;
   const needsNode = hasExpressBackend(dirname);
   const vite = hasViteConfig(dirname);
+
+  const nodeMetaAttrs = "";
 
   const secondBadge = needsNode
     ? vite
@@ -454,11 +480,15 @@ function renderExerciseCard(dirname) {
 
   const pathLabel = `${dirname}/index.html`;
   const linksMarkup = hasReadmeViewer
-    ? `        <div class="card-link-row">
-          <a class="card-link" href="${escapeHtml(href)}">페이지 열기</a>
+    ? `        <div class="card-link-row"${nodeMetaAttrs}>
+          <a class="card-link" href="${escapeHtml(href)}" data-node-main data-node-text="페이지 열기">페이지 열기</a>
           <a class="card-link" href="${escapeHtml(readmeHref)}">개요 보기</a>
         </div>`
-    : `        <a class="card-link" href="${escapeHtml(href)}">페이지 열기</a>`;
+    : `        <div${nodeMetaAttrs}>
+          <a class="card-link" href="${escapeHtml(href)}" data-node-main data-node-text="페이지 열기">페이지 열기</a>
+        </div>`;
+
+  const nodeHint = "";
 
   return `        <article class="exercise-card">
           <header>
@@ -472,6 +502,7 @@ function renderExerciseCard(dirname) {
 ${apiNoteMarkup}
           <p class="path-label">${escapeHtml(pathLabel)}</p>
 ${linksMarkup}
+${nodeHint}
         </article>`;
 }
 
@@ -583,6 +614,7 @@ ${cardsMarkup}
         <p>생성 파일: <code>index.html</code> | 생성 스크립트: <code>scripts/generate-root-index.js</code></p>
       </footer>
     </main>
+${renderHubNodePortsScript()}
   </body>
 </html>
 `;

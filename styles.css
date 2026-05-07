@@ -355,6 +355,18 @@ a {
   gap: 10px;
 }
 
+.node-hub-note {
+  margin: 0.55rem 0 0;
+  padding: 0.55rem 0.7rem;
+  border-radius: 10px;
+  border: 1px solid rgba(250, 204, 21, 0.28);
+  background: rgba(250, 204, 21, 0.08);
+  display: block;
+  font-size: 0.82rem;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
 .empty-state {
   padding: 32px;
   text-align: center;

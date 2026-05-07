@@ -15,6 +15,7 @@ NODE_PORT_SCAN_START="${NODE_PORT_SCAN_START:-3020}"
 ENABLE_D5_API="${ENABLE_D5_API:-1}"
 # start-servers 통합 실행에서는 종료 안정성을 위해 기본적으로 reload를 끈다.
 D5_API_RELOAD="${D5_API_RELOAD:-0}"
+D5_API_PORT_START="${D5_API_PORT:-8793}"
 
 # 탐색에서 제외 (generate-root-index.js 와 비슷한 기준)
 IGNORE_DIR_NAMES=(
@@ -33,6 +34,7 @@ PINNED_STATIC_DIRS=(
 # (기본 규칙은 .build/index.html 이 있으면 빌드를 생략하므로, 수정 사항이 npm start(Node) 에 안 붙을 수 있음.)
 PINNED_VITE_ALWAYS_BUILD=(
   "goorm-260504-d4-p2-webpage"
+  "goorm-260507-d6-p1-webpage"
 )
 
 if ! command -v python3 >/dev/null 2>&1; then
@@ -166,7 +168,8 @@ preferred_port_from_env() {
   echo "${_val}"
 }
 
-# 출력: 줄 단위 디렉터리 절대경로 (server.js|server.mjs · package.json · start 스크립트 존재)
+# 출력: 줄 단위 디렉터리 절대경로
+# (server.js|server.mjs 또는 server/index.ts|js|mjs · package.json · start 스크립트 존재)
 discover_node_server_projects() {
   local sorted=()
   while IFS= read -r -d '' item; do
@@ -183,7 +186,8 @@ discover_node_server_projects() {
     if [[ ! -f "${d}/package.json" ]]; then
       continue
     fi
-    if [[ ! -f "${d}/server.js" ]] && [[ ! -f "${d}/server.mjs" ]]; then
+    if [[ ! -f "${d}/server.js" ]] && [[ ! -f "${d}/server.mjs" ]] && \
+       [[ ! -f "${d}/server/index.ts" ]] && [[ ! -f "${d}/server/index.js" ]] && [[ ! -f "${d}/server/index.mjs" ]]; then
       continue
     fi
     if project_has_start_script "${d}"; then
@@ -334,6 +338,20 @@ allocate_free_app_port_scan() {
 
   return 1
 
+}
+
+pick_free_port_from_start() {
+  local start="${1:-8793}"
+  local p="${start}"
+  local max=$((start + 60))
+  while (( p <= max )); do
+    if ! port_blocked_for_hub "${p}"; then
+      echo "${p}"
+      return 0
+    fi
+    p=$((p + 1))
+  done
+  return 1
 }
 
 choose_app_port_for_dir() {
@@ -507,7 +525,7 @@ if (( ${#APP_DIRS[@]} > 0 )); then
 fi
 
 echo "[1] 정적 허브: http://localhost:${STATIC_PORT}  (${ROOT_DIR})" >&2
-python3 -m http.server "${STATIC_PORT}" --directory "${ROOT_DIR}" &
+node "${ROOT_DIR}/scripts/hub-static-proxy.mjs" "${STATIC_PORT}" "${ROOT_DIR}" "${HUB_DEV_PORTS_FILE}" &
 STATIC_PID=$!
 write_runtime_pid_file
 
@@ -534,17 +552,26 @@ ensure_vite_projects_for_static_hub
 if [[ "${ENABLE_D5_API}" != "0" ]]; then
   D5_DIR="${ROOT_DIR}/goorm-260506-d5-p1-webpage"
   if [[ -d "${D5_DIR}" && -f "${D5_DIR}/package.json" ]]; then
+    D5_API_PORT_CHOSEN="$(pick_free_port_from_start "${D5_API_PORT_START}" || true)"
+    if [[ -z "${D5_API_PORT_CHOSEN}" ]]; then
+      echo "[api] goorm-260506-d5-p1-webpage: 빈 API 포트를 찾지 못해 기동을 건너뜁니다." >&2
+    else
+      reserve_app_port_runtime "${D5_API_PORT_CHOSEN}"
+      if [[ "${D5_API_PORT_CHOSEN}" != "${D5_API_PORT_START}" ]]; then
+        echo "[api] d5 FastAPI 포트 ${D5_API_PORT_START} 사용 중 → ${D5_API_PORT_CHOSEN} 로 대체" >&2
+      fi
     echo "[api] goorm-260506-d5-p1-webpage FastAPI 기동 시도 (direct uvicorn)" >&2
     (
       cd "${D5_DIR}"
       if [[ "${D5_API_RELOAD}" == "1" ]]; then
-        exec python3 -m uvicorn api.index:app --host 0.0.0.0 --port 8793 --reload
+        exec python3 -m uvicorn api.index:app --host 0.0.0.0 --port "${D5_API_PORT_CHOSEN}" --reload
       else
-        exec python3 -m uvicorn api.index:app --host 0.0.0.0 --port 8793
+        exec python3 -m uvicorn api.index:app --host 0.0.0.0 --port "${D5_API_PORT_CHOSEN}"
       fi
     ) &
     API_PIDS+=($!)
     write_runtime_pid_file
+    fi
   fi
 fi
 
@@ -588,6 +615,7 @@ done
 echo "" >&2
 echo "--- 열 주소 요약 ---"
 echo " 정적 허브     http://localhost:${STATIC_PORT}"
+echo " Vite+Node(API) 프로젝트: 허브(5000)의 /api 프록시가 프로젝트별 Node API로 자동 연결합니다."
 echo " Node+Vite(p2)는 빌드 후 프로젝트 루트 index.html 로 …/<프로젝트>/ 만 열어도 됩니다. /api 는 hub-dev-ports.json 로 Node 포트에 붙습니다."
 i=0
 while ((i < ${#APP_LABELS[@]})); do
